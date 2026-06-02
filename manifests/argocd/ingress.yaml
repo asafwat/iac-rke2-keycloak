@@ -1,0 +1,39 @@
+# ArgoCD UI Ingress.
+#
+# cert-manager annotation triggers automatic Certificate creation; the cert
+# is signed by lab-ca-issuer and lands in the secret named below.
+#
+# Traefik annotations:
+#   - router.entrypoints=websecure  -> bind to the 443 entrypoint only (HTTP -> HTTPS
+#                                       redirect is enforced globally via
+#                                       traefik chart additionalArguments)
+#   - router.tls=true               -> terminate TLS at Traefik
+#
+# Backend port 80 because argocd-server runs in HTTP mode (server.insecure: true).
+# TLS is terminated at Traefik using the cert below.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server
+  namespace: argocd
+  annotations:
+    cert-manager.io/cluster-issuer: lab-ca-issuer
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - argocd.lab.test
+      secretName: argocd-server-tls       # cert-manager creates this secret
+  rules:
+    - host: argocd.lab.test
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80              # argocd-server is HTTP (server.insecure: true)
