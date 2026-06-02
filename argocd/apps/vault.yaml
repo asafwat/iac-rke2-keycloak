@@ -1,0 +1,85 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault
+  namespace: argocd
+  annotations:
+    # After storage (-4), cert-manager + MetalLB (-3), issuers + Traefik (-2).
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://helm.releases.hashicorp.com
+    chart: vault
+    targetRevision: 0.32.0
+    helm:
+      releaseName: vault
+      values: |
+        server:
+          # Raft storage with a single replica - HA shape, single-node footprint.
+          # Production: 3 replicas + KMS auto-unseal (see docs/production-gitops.md).
+          ha:
+            enabled: true
+            replicas: 1
+            raft:
+              enabled: true
+              setNodeId: true
+              config: |
+                ui = true
+                listener "tcp" {
+                  tls_disable      = 1
+                  address          = "[::]:8200"
+                  cluster_address  = "[::]:8201"
+                }
+                storage "raft" {
+                  path = "/vault/data"
+                }
+                service_registration "kubernetes" {}
+          dataStorage:
+            enabled: true
+            size: 5Gi
+            accessMode: ReadWriteOnce
+            # storageClassName: local-path is the cluster default (set in Phase 5),
+            # so omitted here.
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+
+          # API + UI exposed at https://vault.lab.test via Traefik with lab-ca-issuer TLS.
+          ingress:
+            enabled: true
+            ingressClassName: traefik
+            annotations:
+              cert-manager.io/cluster-issuer: lab-ca-issuer
+              traefik.ingress.kubernetes.io/router.entrypoints: websecure
+              traefik.ingress.kubernetes.io/router.tls: "true"
+            hosts:
+              - host: vault.lab.test
+                paths:
+                  - /
+            tls:
+              - secretName: vault-tls
+                hosts:
+                  - vault.lab.test
+
+        ui:
+          enabled: true
+          serviceType: ClusterIP
+
+        # ESO is the secrets delivery path - Vault Agent sidecars and CSI not needed.
+        injector:
+          enabled: false
+        csi:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
