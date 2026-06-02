@@ -1,0 +1,26 @@
+# The lab CA root certificate. Used to sign every app cert in this cluster.
+# Issued by the selfsigned-bootstrap ClusterIssuer above.
+#
+# The reviewer can extract this CA cert and add it to their browser/OS trust
+# store to make all https://*.lab.test URLs trusted:
+#
+#   kubectl -n cert-manager get secret lab-ca-key-pair -o jsonpath='{.data.ca\.crt}' \
+#     | base64 -d > lab-ca.crt
+#
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: lab-ca-cert
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: lab-ca
+  secretName: lab-ca-key-pair
+  duration: 87600h           # 10 years - this is a lab; real prod CAs are shorter
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-bootstrap
+    kind: ClusterIssuer
+    group: cert-manager.io

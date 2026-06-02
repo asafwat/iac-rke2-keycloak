@@ -1,0 +1,16 @@
+# The lab CA-backed ClusterIssuer. Every app cert in this cluster (Keycloak,
+# ArgoCD UI, MinIO console, Vault UI, etc.) is signed by this issuer.
+#
+# Apps reference it via:
+#   issuerRef:
+#     name: lab-ca-issuer
+#     kind: ClusterIssuer
+#
+# Or in cert-manager.io/cluster-issuer Ingress annotations on a regular Ingress.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: lab-ca-issuer
+spec:
+  ca:
+    secretName: lab-ca-key-pair

@@ -1,0 +1,75 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  annotations:
+    # Same wave as the issuers - they install in parallel; Traefik doesn't depend
+    # on cert-manager being Ready at install time (it requests certs lazily as
+    # Ingress resources are created in later phases).
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://traefik.github.io/charts
+    chart: traefik
+    targetRevision: 40.2.0
+    helm:
+      releaseName: traefik
+      values: |
+        deployment:
+          replicas: 1
+        # ServiceLB (klipper-lb, bundled with RKE2) binds the host port for type=LoadBalancer.
+        service:
+          type: LoadBalancer
+          spec:
+            externalTrafficPolicy: Local   # preserve client source IP for accurate logs
+        ports:
+          web:
+            port: 8000                      # internal pod port
+            expose:
+              default: true
+            exposedPort: 80                 # external service port
+            redirectTo:
+              port: websecure               # HTTP -> HTTPS redirect for everything
+          websecure:
+            port: 8443
+            expose:
+              default: true
+            exposedPort: 443
+            tls:
+              enabled: true
+        providers:
+          kubernetesIngress:
+            enabled: true                   # watch standard Ingress resources
+          kubernetesCRD:
+            enabled: true                   # watch Traefik IngressRoute CRDs
+          kubernetesGateway:
+            enabled: false                  # Gateway API path documented as prod direction
+        ingressClass:
+          enabled: true
+          isDefaultClass: true              # any Ingress without ingressClassName uses Traefik
+        # Bundled dashboard disabled - no admin surface exposed by default
+        ingressRoute:
+          dashboard:
+            enabled: false
+        # Modest resources for the single-node lab
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traefik
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
