@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    # Cascade-delete child Applications when this one is removed.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    # Repo URL is hardcoded to the public assessment repo. Reviewer's
+    # `terraform apply` will read manifests directly from this URL.
+    repoURL: https://github.com/asafwat/iac-rke2-keycloak.git
+    targetRevision: main
+    path: argocd/apps
+    directory:
+      recurse: true                 # auto-discover every Application file under argocd/apps/
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true                   # delete resources removed from Git
+      selfHeal: true                # revert manual cluster changes back to Git state
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true        # safer for large CRDs (cert-manager, ArgoCD itself)
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
