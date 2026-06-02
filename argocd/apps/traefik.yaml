@@ -32,15 +32,18 @@ spec:
             expose:
               default: true
             exposedPort: 80                 # external service port
-            redirectTo:
-              port: websecure               # HTTP -> HTTPS redirect for everything
           websecure:
             port: 8443
             expose:
               default: true
             exposedPort: 443
-            tls:
-              enabled: true
+        # HTTP -> HTTPS redirect via static config flags. TLS on websecure is
+        # handled by Ingress TLS configs in each app's manifest (cert-manager
+        # issues per-host certs referenced via secretName in Ingress.spec.tls).
+        additionalArguments:
+          - "--entryPoints.web.http.redirections.entryPoint.to=websecure"
+          - "--entryPoints.web.http.redirections.entryPoint.scheme=https"
+          - "--entryPoints.web.http.redirections.entryPoint.permanent=true"
         providers:
           kubernetesIngress:
             enabled: true                   # watch standard Ingress resources
