@@ -21,9 +21,13 @@ spec:
       values: |
         deployment:
           replicas: 1
-        # ServiceLB (klipper-lb, bundled with RKE2) binds the host port for type=LoadBalancer.
+        # RKE2 does NOT ship a service load-balancer (k3s does, RKE2 doesn't).
+        # MetalLB (installed in wave -3) assigns the EXTERNAL-IP from its
+        # IPAddressPool. The annotation requests a specific IP for stable URLs.
         service:
           type: LoadBalancer
+          annotations:
+            metallb.universe.tf/loadBalancerIPs: 192.168.56.20
           spec:
             externalTrafficPolicy: Local   # preserve client source IP for accurate logs
         ports:

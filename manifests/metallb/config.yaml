@@ -1,0 +1,37 @@
+# MetalLB L2-mode configuration for the lab.
+#
+# IPAddressPool — the IPs MetalLB can hand out to LoadBalancer services.
+# L2Advertisement — tells MetalLB to announce these IPs via ARP on the node's
+#                   network interfaces (Layer 2 mode).
+#
+# Why this network design:
+#   - VM node IP:           192.168.56.10   (RKE2 server)
+#   - MetalLB LB pool IP:   192.168.56.20   (Traefik's external IP)
+#
+# The pool sits in the same /24 as the node but is a distinct address so
+# MetalLB's ARP responses for .20 don't conflict with the node's own .10 ARP.
+# The host machine reaches .20 via VirtualBox's host-only network.
+#
+# Production note (see docs/production-gitops.md):
+#   For BGP-capable upstream routers, switch L2Advertisement → BGPAdvertisement
+#   + BGPPeer. Gives true multi-node ECMP load distribution instead of L2's
+#   single-node-owns-each-IP model.
+
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: lab-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.56.20/32           # single-IP pool; expand if more LB services are added later
+  autoAssign: true
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: lab-l2-advertisement
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - lab-pool
