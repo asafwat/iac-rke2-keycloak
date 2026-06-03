@@ -131,10 +131,8 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: local-path
-  # NOT default - Longhorn is the cluster default (Phase 5.5). local-path is
-  # opt-in via storageClassName: local-path for workloads that must avoid
-  # Longhorn (e.g. MinIO, the Longhorn S3 backup target itself - circular
-  # dependency).
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"   # default class - PVCs without storageClassName bind here
 provisioner: rancher.io/local-path
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete

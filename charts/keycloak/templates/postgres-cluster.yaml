@@ -14,10 +14,10 @@ spec:
 
   storage:
     size: {{ .Values.postgres.storageSize }}
-    # Longhorn-backed: replicated block storage + nightly snapshot+backup to
-    # MinIO via Longhorn RecurringJob. Independent of CNPG's barmanObjectStore
-    # WAL archiving below - storage-layer protection vs DB-layer PITR.
-    storageClass: {{ .Values.postgres.storageClass | default "longhorn" }}
+    # storageClass omitted - uses cluster default (local-path).
+    # Postgres protection comes from CNPG's barmanObjectStore below
+    # (continuous WAL archiving + base backups to MinIO) - DB-layer PITR,
+    # which is what matters for Keycloak's data.
 
   bootstrap:
     initdb:
