@@ -93,6 +93,13 @@ spec:
       - ServerSideApply=true
       # CRDs are large - skip kubectl apply-side dry-run, let SSA handle.
       - SkipDryRunOnMissingResource=true
+      # SkipHooks: don't run Helm hooks (annotated with helm.sh/hook: *).
+      # Longhorn's pre-upgrade hook hangs on first install because it needs
+      # longhorn-service-account which is part of the same release. We don't
+      # need the hook for a single-version install. preUpgradeChecker.jobEnabled
+      # in values disables this too, but the values key name shifts across
+      # chart versions - SkipHooks is the version-agnostic safety net.
+      - SkipHooks=true
   # Longhorn manager mutates several fields post-create (status, labels,
   # selector hashes). These are normal and would otherwise show as drift.
   ignoreDifferences:
