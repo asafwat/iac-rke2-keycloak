@@ -392,41 +392,48 @@ spec:
               value: JOSDK_WATCH_CURRENT
           image: quay.io/keycloak/keycloak-operator:26.6.2
           imagePullPolicy: Always
+          # Liveness/readiness relaxed from upstream (failureThreshold: 3 → 10,
+          # period 10s → 15s, timeout 10s → 15s). Vert.x event loop gets
+          # blocked 3-5s at a time while Jackson deserializes the 519KB CRD,
+          # causing intermittent probe timeouts even after the operator is up.
           livenessProbe:
-            failureThreshold: 3
+            failureThreshold: 10
             httpGet:
               path: /q/health/live
               port: 8080
               scheme: HTTP
             initialDelaySeconds: 5
-            periodSeconds: 10
+            periodSeconds: 15
             successThreshold: 1
-            timeoutSeconds: 10
+            timeoutSeconds: 15
           name: keycloak-operator
           ports:
             - containerPort: 8080
               name: http
               protocol: TCP
           readinessProbe:
-            failureThreshold: 3
+            failureThreshold: 10
             httpGet:
               path: /q/health/ready
               port: 8080
               scheme: HTTP
             initialDelaySeconds: 5
-            periodSeconds: 10
+            periodSeconds: 15
             successThreshold: 1
-            timeoutSeconds: 10
+            timeoutSeconds: 15
           # Resources bumped from upstream (700m/450Mi limits) - Java + Quarkus
           # + Jackson schema deserialization on the 519KB Keycloak CRD spike
           # memory and CPU during startup; 450Mi gets OOMKilled before health
           # probes pass on a contended single-node lab.
+          # CPU limit raised to 2000m + request to 500m to reduce throttling
+          # during Jackson deserialization (CPU starvation triggers event-loop
+          # stalls and probe failures).
           resources:
             limits:
-              cpu: 1500m
+              cpu: 2000m
               memory: 1Gi
             requests:
-              cpu: 300m
+              cpu: 500m
               memory: 512Mi
           # Startup probe relaxed from upstream (failureThreshold: 3 → 30,
           # initialDelaySeconds: 5 → 10). Quarkus + Jackson on the 519KB
