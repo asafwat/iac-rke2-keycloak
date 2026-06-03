@@ -417,13 +417,17 @@ spec:
             periodSeconds: 10
             successThreshold: 1
             timeoutSeconds: 10
+          # Resources bumped from upstream (700m/450Mi limits) - Java + Quarkus
+          # + Jackson schema deserialization on the 519KB Keycloak CRD spike
+          # memory and CPU during startup; 450Mi gets OOMKilled before health
+          # probes pass on a contended single-node lab.
           resources:
             limits:
-              cpu: 700m
-              memory: 450Mi
+              cpu: 1500m
+              memory: 1Gi
             requests:
               cpu: 300m
-              memory: 450Mi
+              memory: 512Mi
           startupProbe:
             failureThreshold: 3
             httpGet:
