@@ -15,6 +15,10 @@ metadata:
 spec:
   instances: {{ .Values.keycloak.instances }}
   image: {{ .Values.keycloak.image }}
+  # Using the stock upstream image without a pre-built custom image - tell the
+  # operator to run `kc.sh start` (build + start) instead of `kc.sh start
+  # --optimized`, which would require a pre-baked image with `kc.sh build` run.
+  startOptimized: false
 
   hostname:
     hostname: {{ .Values.keycloak.hostname }}
