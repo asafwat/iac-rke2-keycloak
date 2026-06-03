@@ -1,0 +1,111 @@
+# Daily Vault Raft snapshot → MinIO s3://vault-backups/
+#
+# Flow:
+#   1. Login to Vault via the `kubernetes` auth method using this Pod's
+#      projected SA token → short-lived Vault token bound to the
+#      `vault-snapshot` policy (sudo on sys/storage/raft/snapshot).
+#   2. Call POST /v1/sys/storage/raft/snapshot → stream snapshot tarball
+#      to /tmp/vault-snapshot.tar.
+#   3. Upload to MinIO with mc.
+#   4. Prune snapshots older than 7 days.
+#
+# Image: bitnami/minio-client carries mc + curl + jq (everything we need)
+# in a small footprint and runs as non-root.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vault-snapshot
+  namespace: vault
+spec:
+  schedule: "0 3 * * *"           # 03:00 daily, after CNPG at 02:00
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: vault-snapshot
+        spec:
+          serviceAccountName: vault-snapshot
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            fsGroup: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: snapshot
+              image: bitnamilegacy/minio-client:2024.11.21-debian-12-r2
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: VAULT_ADDR
+                  value: "http://vault.vault.svc.cluster.local:8200"
+                - name: MINIO_ADDR
+                  value: "http://minio.minio.svc.cluster.local:9000"
+                - name: MINIO_BUCKET
+                  value: "vault-backups"
+                - name: VAULT_ROLE
+                  value: "vault-snapshot"
+                - name: RETENTION_DAYS
+                  value: "7"
+                - name: ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: vault-snapshot-minio-creds
+                      key: ACCESS_KEY
+                - name: SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: vault-snapshot-minio-creds
+                      key: SECRET_KEY
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                capabilities:
+                  drop: ["ALL"]
+                seccompProfile:
+                  type: RuntimeDefault
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits:   { cpu: 200m, memory: 256Mi }
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  set -e
+                  ts=$(date -u +%Y%m%dT%H%M%SZ)
+                  echo "[vault-snapshot] starting at $ts"
+
+                  # 1. Login to Vault via Kubernetes auth method
+                  jwt=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+                  echo "[vault-snapshot] logging in to Vault as role=$VAULT_ROLE"
+                  token=$(curl -sf -X POST \
+                    --data "{\"role\":\"$VAULT_ROLE\",\"jwt\":\"$jwt\"}" \
+                    "$VAULT_ADDR/v1/auth/kubernetes/login" \
+                    | jq -er '.auth.client_token')
+
+                  # 2. Pull snapshot
+                  echo "[vault-snapshot] requesting Raft snapshot"
+                  curl -sf --header "X-Vault-Token: $token" \
+                    "$VAULT_ADDR/v1/sys/storage/raft/snapshot" \
+                    -o /tmp/vault-snapshot.snap
+                  size=$(stat -c%s /tmp/vault-snapshot.snap)
+                  echo "[vault-snapshot] snapshot saved: $size bytes"
+
+                  # 3. Upload to MinIO
+                  mc alias set local "$MINIO_ADDR" "$ACCESS_KEY" "$SECRET_KEY" >/dev/null
+                  object="local/${MINIO_BUCKET}/vault-snapshot-${ts}.snap"
+                  echo "[vault-snapshot] uploading to ${object}"
+                  mc cp /tmp/vault-snapshot.snap "$object"
+
+                  # 4. Prune older than RETENTION_DAYS
+                  echo "[vault-snapshot] pruning snapshots older than ${RETENTION_DAYS} days"
+                  mc rm --recursive --force \
+                    --older-than "${RETENTION_DAYS}d" \
+                    "local/${MINIO_BUCKET}/" || true
+
+                  echo "[vault-snapshot] complete"

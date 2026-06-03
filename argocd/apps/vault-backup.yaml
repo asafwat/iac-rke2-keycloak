@@ -1,0 +1,37 @@
+# Phase 11 — Vault Raft snapshot CronJob → MinIO s3://vault-backups/
+#
+# Sync wave 3: after vault (-1), minio (1), keycloak (2). Needs Vault unsealed
+# and the `vault-snapshot` k8s auth role created by init-vault.{ps1,sh}.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-backup
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/asafwat/iac-rke2-keycloak.git
+    targetRevision: main
+    path: manifests/vault-backup
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false                  # vault ns already exists from wave -1
+      - ServerSideApply=true
+    retry:
+      limit: 20
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
