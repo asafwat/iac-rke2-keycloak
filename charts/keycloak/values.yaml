@@ -27,9 +27,17 @@ keycloak:
   instances: 1                                # multi-replica needs Infinispan cache config; out of scope
   hostname: keycloak.lab.test
   image: quay.io/keycloak/keycloak:26.6.2     # match operator version
+  # CPU LIMIT especially matters for first-start. With startOptimized=false,
+  # the operator runs `kc.sh start` which executes the Quarkus build phase
+  # before serving traffic — multi-threaded, scales with available CPU.
+  # A 1-core hard cap turns a ~60s build into 5-10+ min.
+  # Memory limit bumped to absorb build-phase RSS spike (Jandex indexes +
+  # augmented bytecode in heap simultaneously).
+  # Production with a pre-baked image (startOptimized=true + readOnlyRootFs)
+  # could drop these back to the lower defaults — see docs/production-gaps.md.
   resources:
     requests: { cpu: 200m, memory: 512Mi }
-    limits:   { cpu: 1000m, memory: 1Gi }
+    limits:   { cpu: 2000m, memory: 1536Mi }
 
 # ── Postgres (CNPG-managed) ──────────────────────────────────────────────────
 postgres:
