@@ -48,6 +48,23 @@ spec:
             requests: { cpu: 100m, memory: 128Mi }
             limits:   { cpu: 500m, memory: 256Mi }
 
+          # The chart's default readiness probe is an exec that shells `vault status`.
+          # On a resource-constrained PoC the shell-spawn + binary-exec alone can blow
+          # the default 3s timeout — even though Vault's HTTP listener answers in <100ms.
+          # The probe failure events spam kubelet without indicating a real problem.
+          # Bumped timeout + relaxed failureThreshold to absorb VirtualBox CPU jitter.
+          readinessProbe:
+            enabled: true
+            timeoutSeconds: 10
+            failureThreshold: 6
+            periodSeconds: 10
+          livenessProbe:
+            enabled: true
+            timeoutSeconds: 10
+            failureThreshold: 6
+            periodSeconds: 30
+            initialDelaySeconds: 60
+
           # API + UI exposed at https://vault.lab.test via Traefik with lab-ca-issuer TLS.
           ingress:
             enabled: true
