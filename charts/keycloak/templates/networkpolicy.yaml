@@ -78,8 +78,9 @@ spec:
       ports:
         - { protocol: TCP, port: 5432 }
 ---
-# 4. Allow Postgres replication + CNPG operator traffic INSIDE the namespace.
-# Primary <-> standby streaming replication, plus instance-manager <-> kube-apiserver.
+# 4. Postgres ingress + egress: peers, cnpg-system, AND the Keycloak app
+# (Keycloak pods need to open the SQL connection - bidirectional NetPol means
+# the destination must also allow them in).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -97,6 +98,9 @@ spec:
         - podSelector:
             matchLabels:
               cnpg.io/cluster: keycloak-db
+        - podSelector:
+            matchLabels:
+              app: keycloak                 # Keycloak app needs SQL access
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: cnpg-system
