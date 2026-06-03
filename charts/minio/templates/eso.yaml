@@ -1,0 +1,97 @@
+{{- if .Values.externalSecrets.enabled }}
+# ─────────────────────────────────────────────────────────────────────────────
+# ExternalSecrets - source MinIO root creds + per-consumer scoped creds from Vault.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 1. Root admin credentials (referenced by minio.auth.existingSecret).
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: minio-root-credentials
+  namespace: {{ .Release.Namespace }}
+spec:
+  refreshInterval: {{ .Values.externalSecrets.refreshInterval }}
+  secretStoreRef:
+    name: {{ .Values.externalSecrets.secretStoreRef.name }}
+    kind: {{ .Values.externalSecrets.secretStoreRef.kind }}
+  target:
+    name: minio-root-credentials
+    creationPolicy: Owner
+  data:
+    - secretKey: root-user
+      remoteRef:
+        key: minio/admin
+        property: user
+    - secretKey: root-password
+      remoteRef:
+        key: minio/admin
+        property: password
+---
+# 2. CNPG backup writer - scoped user, bound to cnpg-backup-policy.
+# Bitnami chart's provisioning Job reads this secret and runs `mc admin user add`
+# using the env-file-formatted body below.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: minio-cnpg-backup-creds
+  namespace: {{ .Release.Namespace }}
+spec:
+  refreshInterval: {{ .Values.externalSecrets.refreshInterval }}
+  secretStoreRef:
+    name: {{ .Values.externalSecrets.secretStoreRef.name }}
+    kind: {{ .Values.externalSecrets.secretStoreRef.kind }}
+  target:
+    name: minio-cnpg-backup-creds
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      data:
+        cnpg-backup: |
+          username={{ `{{ .accessKey }}` }}
+          password={{ `{{ .secretKey }}` }}
+          disabled=false
+          policies=cnpg-backup-policy
+          setPolicies=true
+  data:
+    - secretKey: accessKey
+      remoteRef:
+        key: minio/cnpg-access-keys
+        property: access_key
+    - secretKey: secretKey
+      remoteRef:
+        key: minio/cnpg-access-keys
+        property: secret_key
+---
+# 3. Vault snapshot uploader - scoped user, bound to vault-snapshot-policy.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: minio-vault-snapshot-creds
+  namespace: {{ .Release.Namespace }}
+spec:
+  refreshInterval: {{ .Values.externalSecrets.refreshInterval }}
+  secretStoreRef:
+    name: {{ .Values.externalSecrets.secretStoreRef.name }}
+    kind: {{ .Values.externalSecrets.secretStoreRef.kind }}
+  target:
+    name: minio-vault-snapshot-creds
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      data:
+        vault-snapshot: |
+          username={{ `{{ .accessKey }}` }}
+          password={{ `{{ .secretKey }}` }}
+          disabled=false
+          policies=vault-snapshot-policy
+          setPolicies=true
+  data:
+    - secretKey: accessKey
+      remoteRef:
+        key: minio/vault-snapshot-keys
+        property: access_key
+    - secretKey: secretKey
+      remoteRef:
+        key: minio/vault-snapshot-keys
+        property: secret_key
+{{- end }}

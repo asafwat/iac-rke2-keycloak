@@ -1,0 +1,98 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# MinIO wrapper values
+# ─────────────────────────────────────────────────────────────────────────────
+# Top-level keys configure THIS wrapper's ESO templates.
+# `minio:` → bitnami/minio subchart.
+
+# ── Wrapper: ESO config ──────────────────────────────────────────────────────
+externalSecrets:
+  enabled: true
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: vault                                # ClusterSecretStore from Phase 7
+    kind: ClusterSecretStore
+
+# ── bitnami/minio subchart ───────────────────────────────────────────────────
+minio:
+  mode: standalone
+  replicaCount: 1
+
+  # Root credentials come from a K8s Secret materialized by the ExternalSecret
+  # template in templates/eso.yaml (Vault path: secret/minio/admin).
+  auth:
+    existingSecret:        minio-root-credentials
+    rootUserSecretKey:     root-user
+    rootPasswordSecretKey: root-password
+
+  # Pre-create buckets used by CNPG and Vault snapshots.
+  defaultBuckets: "cnpg-backups,vault-backups"
+
+  persistence:
+    enabled: true
+    size: 10Gi
+    # storageClass: local-path is the cluster default (Phase 5).
+
+  service:
+    type: ClusterIP
+
+  # ── S3 API ingress: https://minio-api.lab.test ────────────────────────────
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: lab-ca-issuer
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+      traefik.ingress.kubernetes.io/router.tls: "true"
+    hostname: minio-api.lab.test
+    tls: true
+
+  # ── Console UI ingress: https://minio.lab.test ────────────────────────────
+  consoleIngress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: lab-ca-issuer
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+      traefik.ingress.kubernetes.io/router.tls: "true"
+    hostname: minio.lab.test
+    tls: true
+
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+  # ── Provisioning: policies + scoped users + buckets ──────────────────────
+  # The provisioning Job runs after MinIO Server is Ready.
+  # It reads user definitions from the K8s Secrets named in usersExistingSecrets,
+  # creates the policies inline below, and attaches each user to its policy.
+  provisioning:
+    enabled: true
+
+    # Bucket-scoped IAM policies. Each consumer can only touch its own bucket.
+    policies:
+      - name: cnpg-backup-policy
+        statements:
+          - effect: Allow
+            actions:
+              - "s3:*"
+            resources:
+              - "arn:aws:s3:::cnpg-backups"
+              - "arn:aws:s3:::cnpg-backups/*"
+      - name: vault-snapshot-policy
+        statements:
+          - effect: Allow
+            actions:
+              - "s3:*"
+            resources:
+              - "arn:aws:s3:::vault-backups"
+              - "arn:aws:s3:::vault-backups/*"
+
+    # Users defined via existing K8s Secrets (materialized by ESO).
+    # Each secret holds env-file-format user definitions.
+    usersExistingSecrets:
+      - minio-cnpg-backup-creds
+      - minio-vault-snapshot-creds
+
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits:   { cpu: 200m, memory: 128Mi }

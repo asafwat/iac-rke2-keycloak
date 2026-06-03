@@ -1,0 +1,15 @@
+apiVersion: v2
+name: minio
+description: >-
+  Wrapper chart for MinIO with ESO-sourced root + scoped user credentials.
+  Bundles bitnami/minio as a subchart plus three ExternalSecrets that source
+  from Vault (root admin, CNPG backup writer, Vault snapshot uploader).
+type: application
+version: 0.1.0
+appVersion: "17.0.21"
+
+dependencies:
+  - name: minio
+    version: "17.0.21"
+    repository: "https://charts.bitnami.com/bitnami"
+    alias: minio
