@@ -29,14 +29,12 @@ spec:
               memory: 128Mi
         speaker:
           enabled: true
-          # Disable the FRR-K8s BGP speaker. We use L2 mode only (L2Advertisement
+          # Disable FRR inside the speaker. We use L2 mode only (L2Advertisement
           # CR in metallb-config), so the BGP integration is unused. On this
           # multi-NIC Vagrant box the FRR speaker binds to the wrong interface
           # (10.0.2.15 NAT, not the 192.168.56.10 host-only network), then its
           # liveness probe fails and the pod thrashes - cosmetic but noisy.
           frr:
-            enabled: false
-          frrk8s:
             enabled: false
           resources:
             requests:
@@ -45,6 +43,11 @@ spec:
             limits:
               cpu: 200m
               memory: 128Mi
+        # frrk8s is a TOP-LEVEL key in MetalLB chart 0.14+ (not under speaker).
+        # The frr-k8s DaemonSet is for BGP via the FRR-K8s project — separate
+        # from the speaker's optional embedded FRR. L2 mode needs neither.
+        frrk8s:
+          enabled: false
         crds:
           enabled: true                # install CRDs as part of the chart
         prometheus:
