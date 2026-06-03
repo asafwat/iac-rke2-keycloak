@@ -80,6 +80,9 @@ spec:
                   size=$(wc -c < /shared/vault-snapshot.snap)
                   echo "[snapshot] saved $size bytes"
                   echo "$ts" > /shared/timestamp
+                  # vault writes 0600; upload container runs as a different UID
+                  # but the same fsGroup. Make both files group-readable.
+                  chmod 0640 /shared/vault-snapshot.snap /shared/timestamp
           containers:
             - name: upload
               image: bitnamilegacy/minio-client:2024.11.21-debian-12-r2
