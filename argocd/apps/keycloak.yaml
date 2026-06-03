@@ -28,6 +28,12 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+    retry:
+      limit: 20
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
   # Ignore ESO webhook-defaulted fields on ExternalSecret CRs (same pattern as MinIO).
   ignoreDifferences:
     - group: external-secrets.io

@@ -84,3 +84,11 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+    # selfHeal doesn't retry FAILED sync operations - only drift. Webhook /
+    # CRD races during cold bootstrap need explicit retry with backoff.
+    retry:
+      limit: 20
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

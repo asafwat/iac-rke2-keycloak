@@ -23,3 +23,12 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+    # MetalLB webhook may not be Ready at first sync attempt. Same retry
+    # pattern as cert-manager-issuers - selfHeal alone won't retry FAILED
+    # sync operations, only drift.
+    retry:
+      limit: 20
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

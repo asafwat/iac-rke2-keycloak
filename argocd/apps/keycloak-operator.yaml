@@ -24,3 +24,9 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true     # Keycloak CRDs are large; SSA handles them cleanly
+    retry:
+      limit: 20
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

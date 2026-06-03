@@ -23,3 +23,12 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+    # selfHeal alone doesn't retry FAILED sync operations - only drift. The
+    # cert-manager webhook isn't always Ready at first apply time, causing
+    # a transient "no endpoints available" error that needs proper retry.
+    retry:
+      limit: 20
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
