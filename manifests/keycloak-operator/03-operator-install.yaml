@@ -428,13 +428,17 @@ spec:
             requests:
               cpu: 300m
               memory: 512Mi
+          # Startup probe relaxed from upstream (failureThreshold: 3 → 30,
+          # initialDelaySeconds: 5 → 10). Quarkus + Jackson on the 519KB
+          # Keycloak CRD can take >35s to bind :8080 on a contended single-node
+          # lab; 30 × 10s gives ~5 min of grace before kubelet restarts.
           startupProbe:
-            failureThreshold: 3
+            failureThreshold: 30
             httpGet:
               path: /q/health/started
               port: 8080
               scheme: HTTP
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 10
             successThreshold: 1
             timeoutSeconds: 10
