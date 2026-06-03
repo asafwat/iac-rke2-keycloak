@@ -19,7 +19,7 @@ spec:
       values: |
         server:
           # Raft storage with a single replica - HA shape, single-node footprint.
-          # Production: 3 replicas + KMS auto-unseal (see docs/production-gitops.md).
+          # Production: 3 replicas + KMS auto-unseal (see docs/production-gaps.md).
           ha:
             enabled: true
             replicas: 1
