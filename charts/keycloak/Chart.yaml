@@ -1,0 +1,10 @@
+apiVersion: v2
+name: keycloak
+description: >-
+  Wrapper chart for Keycloak with CNPG Postgres + ScheduledBackup + ESO-sourced
+  credentials. The Keycloak operator (installed separately via
+  argocd/apps/keycloak-operator.yaml) reconciles the Keycloak CR; CloudNativePG
+  reconciles the Postgres Cluster + ScheduledBackup.
+type: application
+version: 0.1.0
+appVersion: "26.6.2"

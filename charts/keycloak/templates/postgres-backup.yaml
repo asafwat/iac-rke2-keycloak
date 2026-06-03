@@ -1,0 +1,17 @@
+{{- if .Values.postgres.backup.enabled }}
+# Daily base backup of the Keycloak Postgres cluster to MinIO.
+# WAL archiving is configured in the Cluster CR (continuous); this CR triggers
+# scheduled BASE backups so we have a known-good restore point per day.
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: keycloak-db-daily
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  schedule: {{ .Values.postgres.backup.scheduleDaily | quote }}    # 6-field cron: sec min hour dom mon dow
+  backupOwnerReference: self
+  cluster:
+    name: keycloak-db
+{{- end }}

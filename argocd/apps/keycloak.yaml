@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak
+  namespace: argocd
+  annotations:
+    # After all operators (-1) and ESO config (0) and MinIO (1). The wrapper
+    # uses sub-resource sync-waves inside it: Postgres Cluster at 0, Keycloak
+    # CR at 1, Ingress at 2 - so the DB is up before Keycloak tries to connect.
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/asafwat/iac-rke2-keycloak.git
+    targetRevision: main
+    path: charts/keycloak
+    helm:
+      releaseName: keycloak
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: keycloak
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+  # Ignore ESO webhook-defaulted fields on ExternalSecret CRs (same pattern as MinIO).
+  ignoreDifferences:
+    - group: external-secrets.io
+      kind: ExternalSecret
+      jqPathExpressions:
+        - .spec.data[].remoteRef.conversionStrategy
+        - .spec.data[].remoteRef.decodingStrategy
+        - .spec.data[].remoteRef.metadataPolicy
+        - .spec.data[].remoteRef.nullBytePolicy

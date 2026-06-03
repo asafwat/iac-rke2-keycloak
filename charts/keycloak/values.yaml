@@ -1,0 +1,41 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Keycloak wrapper values
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Wrapper: ESO config ──────────────────────────────────────────────────────
+externalSecrets:
+  enabled: true
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: vault
+    kind: ClusterSecretStore
+
+# ── Keycloak app ─────────────────────────────────────────────────────────────
+keycloak:
+  instances: 1                                # multi-replica needs Infinispan cache config; out of scope
+  hostname: keycloak.lab.test
+  image: quay.io/keycloak/keycloak:26.6.2     # match operator version
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }
+
+# ── Postgres (CNPG-managed) ──────────────────────────────────────────────────
+postgres:
+  instances: 2                                # primary + sync replica - demonstrates HA at the DB layer
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.6   # Keycloak 26.x docs: "tested with PostgreSQL 17". PG 18 not on Keycloak's test matrix as of mid-2026.
+  storageSize: 2Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+  backup:
+    enabled: true
+    endpointURL: http://minio.minio.svc.cluster.local:9000
+    destinationPath: s3://cnpg-backups/keycloak
+    retentionPolicy: "7d"
+    scheduleDaily: "0 0 2 * * *"              # 6-field cron, 02:00 daily
+
+# ── Traefik Ingress (TLS via lab-ca-issuer) ──────────────────────────────────
+ingress:
+  hostname: keycloak.lab.test
+  ingressClassName: traefik
+  clusterIssuer: lab-ca-issuer

@@ -1,0 +1,32 @@
+# Traefik Ingress for Keycloak.
+# - TLS terminates at Traefik via cert-manager (lab-ca-issuer).
+# - Keycloak listens on HTTP internally (proxy.headers: xforwarded trusts
+#   Traefik's X-Forwarded-* headers).
+# - Service name follows the Keycloak operator convention: <Keycloak.name>-service.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.clusterIssuer }}
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  ingressClassName: {{ .Values.ingress.ingressClassName }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.hostname }}
+      secretName: keycloak-tls
+  rules:
+    - host: {{ .Values.ingress.hostname }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak-service           # operator-created service
+                port:
+                  number: 8080                    # Keycloak HTTP listener

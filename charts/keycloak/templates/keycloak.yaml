@@ -1,0 +1,51 @@
+# Keycloak CR - reconciled by the Keycloak operator (installed separately).
+# - DB connects to the CNPG-managed Postgres via the read-write Service
+#   (keycloak-db-rw); credentials from the ESO-managed K8s Secret.
+# - bootstrapAdmin creates the master-realm admin user on first start using
+#   credentials from secret/keycloak/admin in Vault (via ESO).
+# - http listener only - TLS terminates at Traefik via the Ingress in the
+#   neighboring template. Keycloak trusts X-Forwarded-* via proxy.headers.
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: Keycloak
+metadata:
+  name: keycloak
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  instances: {{ .Values.keycloak.instances }}
+  image: {{ .Values.keycloak.image }}
+
+  hostname:
+    hostname: {{ .Values.keycloak.hostname }}
+    strict: false
+
+  http:
+    httpEnabled: true
+
+  proxy:
+    headers: xforwarded
+
+  bootstrapAdmin:
+    user:
+      secret: keycloak-bootstrap-admin
+
+  db:
+    vendor: postgres
+    host: keycloak-db-rw
+    port: 5432
+    database: keycloak
+    usernameSecret:
+      name: keycloak-db-app-user
+      key:  username
+    passwordSecret:
+      name: keycloak-db-app-user
+      key:  password
+
+  resources:
+    requests:
+      cpu:    {{ .Values.keycloak.resources.requests.cpu }}
+      memory: {{ .Values.keycloak.resources.requests.memory }}
+    limits:
+      cpu:    {{ .Values.keycloak.resources.limits.cpu }}
+      memory: {{ .Values.keycloak.resources.limits.memory }}

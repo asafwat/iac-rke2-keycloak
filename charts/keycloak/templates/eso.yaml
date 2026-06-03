@@ -1,0 +1,82 @@
+{{- if .Values.externalSecrets.enabled }}
+# ─────────────────────────────────────────────────────────────────────────────
+# ExternalSecrets - all credentials sourced from Vault via ESO.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 1. Postgres app user (CNPG's Cluster.bootstrap.initdb.secret references this).
+#    Type basic-auth is what CNPG expects.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-db-app-user
+  namespace: {{ .Release.Namespace }}
+spec:
+  refreshInterval: {{ .Values.externalSecrets.refreshInterval }}
+  secretStoreRef:
+    name: {{ .Values.externalSecrets.secretStoreRef.name }}
+    kind: {{ .Values.externalSecrets.secretStoreRef.kind }}
+  target:
+    name: keycloak-db-app-user
+    creationPolicy: Owner
+    template:
+      type: kubernetes.io/basic-auth
+  data:
+    - secretKey: username
+      remoteRef:
+        key: postgres/keycloak
+        property: user
+    - secretKey: password
+      remoteRef:
+        key: postgres/keycloak
+        property: password
+---
+# 2. Keycloak bootstrap admin (Keycloak CR's bootstrapAdmin references this).
+#    Creates the master-realm admin user on first start.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-bootstrap-admin
+  namespace: {{ .Release.Namespace }}
+spec:
+  refreshInterval: {{ .Values.externalSecrets.refreshInterval }}
+  secretStoreRef:
+    name: {{ .Values.externalSecrets.secretStoreRef.name }}
+    kind: {{ .Values.externalSecrets.secretStoreRef.kind }}
+  target:
+    name: keycloak-bootstrap-admin
+    creationPolicy: Owner
+  data:
+    - secretKey: username
+      remoteRef:
+        key: keycloak/admin
+        property: user
+    - secretKey: password
+      remoteRef:
+        key: keycloak/admin
+        property: password
+---
+# 3. MinIO S3 credentials for CNPG to write barman backups.
+#    The scoped 'cnpg-backup' user created in Phase 8.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: cnpg-backup-minio-creds
+  namespace: {{ .Release.Namespace }}
+spec:
+  refreshInterval: {{ .Values.externalSecrets.refreshInterval }}
+  secretStoreRef:
+    name: {{ .Values.externalSecrets.secretStoreRef.name }}
+    kind: {{ .Values.externalSecrets.secretStoreRef.kind }}
+  target:
+    name: cnpg-backup-minio-creds
+    creationPolicy: Owner
+  data:
+    - secretKey: ACCESS_KEY_ID
+      remoteRef:
+        key: minio/cnpg-access-keys
+        property: access_key
+    - secretKey: ACCESS_SECRET_KEY
+      remoteRef:
+        key: minio/cnpg-access-keys
+        property: secret_key
+{{- end }}

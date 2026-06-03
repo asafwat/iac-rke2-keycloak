@@ -1,0 +1,51 @@
+# CloudNativePG Cluster for Keycloak's backend.
+# Bootstrap creates DB "keycloak" owned by user from keycloak-db-app-user secret.
+# Continuous WAL + base backups land in MinIO via barmanObjectStore.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: keycloak-db
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  instances: {{ .Values.postgres.instances }}
+  imageName: {{ .Values.postgres.imageName }}
+
+  storage:
+    size: {{ .Values.postgres.storageSize }}
+    # storageClass: local-path is the cluster default (Phase 5)
+
+  bootstrap:
+    initdb:
+      database: keycloak
+      owner: keycloak
+      secret:
+        name: keycloak-db-app-user        # ESO-managed (from secret/postgres/keycloak)
+
+  resources:
+    requests:
+      cpu:    {{ .Values.postgres.resources.requests.cpu }}
+      memory: {{ .Values.postgres.resources.requests.memory }}
+    limits:
+      cpu:    {{ .Values.postgres.resources.limits.cpu }}
+      memory: {{ .Values.postgres.resources.limits.memory }}
+
+  {{- if .Values.postgres.backup.enabled }}
+  backup:
+    barmanObjectStore:
+      destinationPath: {{ .Values.postgres.backup.destinationPath }}
+      endpointURL:     {{ .Values.postgres.backup.endpointURL }}
+      s3Credentials:
+        accessKeyId:
+          name: cnpg-backup-minio-creds   # ESO-managed
+          key:  ACCESS_KEY_ID
+        secretAccessKey:
+          name: cnpg-backup-minio-creds
+          key:  ACCESS_SECRET_KEY
+      wal:
+        compression: gzip
+      data:
+        compression: gzip
+    retentionPolicy: {{ .Values.postgres.backup.retentionPolicy | quote }}
+  {{- end }}
