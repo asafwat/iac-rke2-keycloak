@@ -17,6 +17,18 @@ minio:
   mode: standalone
   replicaCount: 1
 
+  # ── Image registry override ────────────────────────────────────────────────
+  # Bitnami moved free-tier images from docker.io/bitnami/* to
+  # docker.io/bitnamilegacy/* in mid-2025. The chart still defaults to
+  # bitnami/* (404s on pull), so override every image we use.
+  image:
+    repository: bitnamilegacy/minio
+  clientImage:
+    repository: bitnamilegacy/minio-client
+  volumePermissions:
+    image:
+      repository: bitnamilegacy/os-shell
+
   # Root credentials come from a K8s Secret materialized by the ExternalSecret
   # template in templates/eso.yaml (Vault path: secret/minio/admin).
   auth:
