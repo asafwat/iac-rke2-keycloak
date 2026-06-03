@@ -1,0 +1,27 @@
+{{- if .Values.externalSecrets.enabled }}
+# Grafana admin credentials. Materialized into Secret `grafana-admin` with keys
+# admin-user + admin-password, which the kube-prometheus-stack subchart values
+# reference via grafana.admin.existingSecret.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: grafana-admin
+  namespace: {{ .Release.Namespace }}
+spec:
+  refreshInterval: {{ .Values.externalSecrets.refreshInterval | quote }}
+  secretStoreRef:
+    name: {{ .Values.externalSecrets.secretStoreRef.name }}
+    kind: {{ .Values.externalSecrets.secretStoreRef.kind }}
+  target:
+    name: grafana-admin
+    creationPolicy: Owner
+  data:
+    - secretKey: admin-user
+      remoteRef:
+        key: grafana/admin
+        property: user
+    - secretKey: admin-password
+      remoteRef:
+        key: grafana/admin
+        property: password
+{{- end }}

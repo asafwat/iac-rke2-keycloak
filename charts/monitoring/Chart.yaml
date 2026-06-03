@@ -1,0 +1,27 @@
+apiVersion: v2
+name: monitoring
+description: |
+  Wrapper chart for the lab's observability stack. Bundles
+  kube-prometheus-stack (Prometheus + Grafana + node-exporter + kube-state-
+  metrics + prometheus-operator) as a subchart, plus the ESO resources that
+  source Grafana's admin password from Vault, the Traefik Ingress, and the
+  NetworkPolicies. One deployable unit so the reviewer sees a single Helm
+  release + a single ArgoCD Application for the entire monitoring concern.
+type: application
+version: 0.1.0
+appVersion: "85.3.3"
+
+dependencies:
+  - name: kube-prometheus-stack
+    version: "85.3.3"
+    repository: "https://prometheus-community.github.io/helm-charts"
+  # Loki - log aggregation, SingleBinary mode (one pod, filesystem PVC).
+  - name: loki
+    version: "7.0.0"
+    repository: "https://grafana.github.io/helm-charts"
+  # Promtail - log shipper DaemonSet, tails /var/log/pods and pushes to Loki.
+  # Grafana Labs deprecated Promtail in favour of Alloy in 2026; documented
+  # in production-gaps.md as the future migration.
+  - name: promtail
+    version: "6.17.1"
+    repository: "https://grafana.github.io/helm-charts"

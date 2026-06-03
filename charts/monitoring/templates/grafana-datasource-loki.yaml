@@ -1,0 +1,23 @@
+# Registers Loki as a Grafana datasource. The Grafana sidecar (enabled in the
+# kube-prometheus-stack values above with searchNamespace: ALL + label
+# grafana_datasource) auto-imports any ConfigMap with this label - so logs
+# and metrics live in the same Grafana with no manual datasource setup.
+#
+# Prometheus datasource is set up automatically by kube-prometheus-stack;
+# this only adds Loki.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-loki
+  namespace: {{ .Release.Namespace }}
+  labels:
+    grafana_datasource: "1"
+data:
+  loki-datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://kps-loki.{{ .Release.Namespace }}.svc.cluster.local:3100
+        editable: true

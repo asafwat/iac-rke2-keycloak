@@ -1,0 +1,207 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# monitoring wrapper - values
+# ─────────────────────────────────────────────────────────────────────────────
+# Top-level keys configure THIS wrapper's templates (ESO secret, Ingress, NPs).
+# `kube-prometheus-stack:` → the upstream stack subchart (Prometheus + Grafana).
+#
+# Build deps (run once locally before committing; .tgz is vendored):
+#   helm dependency build charts/monitoring
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Wrapper: ESO config (Grafana admin from Vault) ───────────────────────────
+externalSecrets:
+  enabled: true
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: vault
+    kind: ClusterSecretStore
+
+# ── Wrapper: Grafana Ingress (Traefik + lab-ca-issuer) ───────────────────────
+ingress:
+  enabled: true
+  hostname: grafana.lab.test
+  ingressClassName: traefik
+  clusterIssuer: lab-ca-issuer
+  serviceName: kps-grafana       # release-name-grafana per the subchart's naming
+  servicePort: 80
+
+# ── Wrapper: NetworkPolicies ─────────────────────────────────────────────────
+networkPolicies:
+  enabled: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# kube-prometheus-stack subchart
+# Cluster-level scraping only: node-exporter + kube-state-metrics + kubelet
+# (gets per-pod CPU/memory/network via cAdvisor) - no per-app ServiceMonitor
+# wiring needed for the assessment, and no cross-namespace NetworkPolicy edits.
+# ─────────────────────────────────────────────────────────────────────────────
+kube-prometheus-stack:
+
+  # ── AlertManager (off in the lab) ──────────────────────────────────────────
+  # No external receivers (Slack/PagerDuty/email) wired - disabling saves a
+  # pod + PVC. Production would enable + configure routes.
+  alertmanager:
+    enabled: false
+
+  # ── Prometheus ─────────────────────────────────────────────────────────────
+  prometheus:
+    prometheusSpec:
+      replicas: 1
+      retention: 24h
+      resources:
+        requests: { cpu: 200m, memory: 512Mi }
+        limits:   { cpu: 1000m, memory: 1Gi }
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            accessModes: [ReadWriteOnce]
+            resources: { requests: { storage: 5Gi } }
+      # Watch ServiceMonitors/PodMonitors/Rules cluster-wide regardless of
+      # labels - without these, prometheus-operator only sees its own chart's
+      # monitors. Future per-app ServiceMonitors land automatically.
+      serviceMonitorSelectorNilUsesHelmValues:  false
+      podMonitorSelectorNilUsesHelmValues:      false
+      ruleSelectorNilUsesHelmValues:            false
+      probeSelectorNilUsesHelmValues:           false
+      scrapeConfigSelectorNilUsesHelmValues:    false
+      # Pod security (restricted-compliant; consistent with the rest of the platform).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser:    1000
+        fsGroup:      2000
+        seccompProfile: { type: RuntimeDefault }
+
+  # ── Grafana ────────────────────────────────────────────────────────────────
+  grafana:
+    # Admin password from the ESO-managed K8s Secret (created by templates/
+    # eso-grafana-admin.yaml; Vault path: secret/grafana/admin).
+    admin:
+      existingSecret: grafana-admin
+      userKey:        admin-user
+      passwordKey:    admin-password
+    resources:
+      requests: { cpu: 50m,  memory: 128Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+    persistence:
+      enabled: true
+      size:    1Gi
+    # Ingress is owned by the wrapper template (templates/ingress-grafana.yaml).
+    ingress:
+      enabled: false
+    defaultDashboardsTimezone: utc
+    # Auto-import any ConfigMap labeled grafana_dashboard=1 / grafana_datasource=1
+    # from any namespace. Lets future per-app teams ship their own dashboards.
+    sidecar:
+      dashboards:
+        enabled: true
+        label: grafana_dashboard
+        searchNamespace: ALL
+      datasources:
+        enabled: true
+        label: grafana_datasource
+        searchNamespace: ALL
+    # Pod security (restricted-compliant).
+    securityContext:
+      runAsNonRoot: true
+      runAsUser:    472
+      fsGroup:      472
+      seccompProfile: { type: RuntimeDefault }
+
+  # ── prometheus-operator (controller) ───────────────────────────────────────
+  prometheusOperator:
+    resources:
+      requests: { cpu: 50m,  memory: 64Mi }
+      limits:   { cpu: 200m, memory: 256Mi }
+
+  # ── node-exporter (DaemonSet, host metrics) ────────────────────────────────
+  nodeExporter:
+    enabled: true
+  prometheus-node-exporter:
+    resources:
+      requests: { cpu: 20m, memory: 32Mi }
+      limits:   { cpu: 100m, memory: 64Mi }
+
+  # ── kube-state-metrics ─────────────────────────────────────────────────────
+  kubeStateMetrics:
+    enabled: true
+  kube-state-metrics:
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits:   { cpu: 200m, memory: 128Mi }
+
+  # ── Disable RKE2-irrelevant scrapes ────────────────────────────────────────
+  # RKE2 doesn't expose etcd/kube-controller-manager/kube-scheduler/kube-proxy
+  # metrics on the standard ports (they're bound to localhost in the hardened
+  # build). Disabling avoids permanently-Down targets in Prometheus.
+  kubeControllerManager: { enabled: false }
+  kubeScheduler:         { enabled: false }
+  kubeProxy:             { enabled: false }
+  kubeEtcd:              { enabled: false }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Loki subchart (log aggregation, SingleBinary mode)
+# The grafana/loki chart defaults to SimpleScalable (read/write/backend +
+# memcached caches + a gateway) - too heavy for the lab. Collapse to a single
+# binary on a local-path PVC with everything optional disabled.
+# ─────────────────────────────────────────────────────────────────────────────
+loki:
+  loki:
+    auth_enabled: false
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+    # Loki 3.x requires an explicit schema (tsdb / v13).
+    schemaConfig:
+      configs:
+        - from: "2024-04-01"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+    limits_config:
+      retention_period: 72h
+
+  deploymentMode: SingleBinary
+  singleBinary:
+    replicas: 1
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClass: local-path
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { memory: 512Mi }
+
+  # Zero out SimpleScalable components (we run SingleBinary only).
+  backend: { replicas: 0 }
+  read:    { replicas: 0 }
+  write:   { replicas: 0 }
+
+  # Disable everything optional/heavy for a lab.
+  chunksCache:  { enabled: false }
+  resultsCache: { enabled: false }
+  lokiCanary:   { enabled: false }
+  test:         { enabled: false }
+  gateway:      { enabled: false }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Promtail subchart (log shipper DaemonSet)
+# Tails every pod's logs on each node via Kubernetes service discovery and
+# pushes them to Loki. Default scrape config (all pods with namespace/pod/
+# container labels) is fine; only the Loki push endpoint needs setting.
+# ─────────────────────────────────────────────────────────────────────────────
+promtail:
+  config:
+    clients:
+      # Loki Service in the same namespace - kps release; subchart name 'loki'
+      # → Service `monitoring-loki` or `kps-loki`? Service name from the loki
+      # SingleBinary mode is `<release>-loki`. Our release-name is `kps`, but
+      # subchart Services are named `<release>-<subchart>`, so `kps-loki`.
+      - url: http://kps-loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
+
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { memory: 128Mi }

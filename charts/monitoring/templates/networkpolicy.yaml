@@ -1,0 +1,94 @@
+{{- if .Values.networkPolicies.enabled }}
+# ─────────────────────────────────────────────────────────────────────────────
+# NetworkPolicies for the monitoring namespace.
+# Allows:
+#   - Prometheus -> kube-apiserver + kubelet + node-exporter + scrape targets
+#   - Grafana <-> Prometheus (intra-namespace)
+#   - Traefik -> Grafana (ingress)
+#   - DNS for all pods
+# ─────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector:       { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# Prometheus needs to reach kube-apiserver (service discovery), kubelet
+# (cAdvisor metrics on 10250), node-exporter on host network (9100), and
+# any other endpoint it scrapes. Permissive on common scrape ports.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-scrape-targets
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - { protocol: TCP, port: 6443 }    # kube-apiserver (Prom + Promtail SD)
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 10250 }   # kubelet
+        - { protocol: TCP, port: 10255 }   # kubelet read-only
+        - { protocol: TCP, port: 9100 }    # node-exporter
+        - { protocol: TCP, port: 8080 }    # kube-state-metrics + generic
+        - { protocol: TCP, port: 9090 }    # prometheus self-scrape
+        - { protocol: TCP, port: 8443 }    # secure variants
+        - { protocol: TCP, port: 3000 }    # grafana
+        - { protocol: TCP, port: 3100 }    # loki HTTP (Promtail push, Grafana query)
+        - { protocol: TCP, port: 9095 }    # loki gRPC
+        - { protocol: TCP, port: 9093 }    # alertmanager (if re-enabled)
+---
+# Intra-namespace: prom <-> grafana <-> operator <-> exporters.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-monitoring
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+---
+# Allow Traefik to reach Grafana for the Ingress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traefik-to-grafana
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: grafana }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: traefik } }
+      ports:
+        - { protocol: TCP, port: 3000 }
+        - { protocol: TCP, port: 80 }
+{{- end }}

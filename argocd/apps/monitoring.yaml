@@ -1,0 +1,50 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  annotations:
+    # Wave 5 - after NetworkPolicies (wave 4). Prom + Grafana don't depend on
+    # any other workload to come up, they observe what's already there.
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/asafwat/iac-rke2-keycloak.git
+    targetRevision: main
+    path: charts/monitoring
+    helm:
+      releaseName: kps              # short name -> Service is `kps-grafana` etc.
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 20
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+  # Prometheus-operator mutates ServiceMonitor.spec.endpoints[].path defaults
+  # and a few other fields. Suppress that drift.
+  ignoreDifferences:
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
+      jsonPointers:
+        - /spec/endpoints
+    # ESO webhook adds defaults to .spec.data[].remoteRef.* on ExternalSecret CRs.
+    - group: external-secrets.io
+      kind: ExternalSecret
+      jqPathExpressions:
+        - .spec.data[].remoteRef.conversionStrategy
+        - .spec.data[].remoteRef.decodingStrategy
+        - .spec.data[].remoteRef.metadataPolicy
+        - .spec.data[].remoteRef.nullBytePolicy
