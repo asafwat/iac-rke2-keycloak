@@ -175,6 +175,14 @@ spec:
         - { protocol: TCP, port: 8000 }     # internal pod port mapped to 80
         - { protocol: TCP, port: 8443 }     # internal pod port mapped to 443
 ---
+# Traefik is an INGRESS CONTROLLER - by definition it routes to every backend
+# Service in the cluster. Restricting which namespaces it can reach defeats
+# the purpose and breaks any future Ingress added in a new namespace (the
+# hello-test in Phase C was the first symptom).
+#
+# Allow egress to any pod in any namespace on common HTTP/API ports.
+# Port 9090 in particular is needed for Bitnami MinIO Console (Service port
+# 9001 maps to container port 9090; NetPol enforces on pod port).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: { name: allow-egress-to-backends, namespace: traefik }
@@ -183,17 +191,17 @@ spec:
   policyTypes: [Egress]
   egress:
     - to:
-        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: argocd } }
-        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: keycloak } }
-        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: minio } }
-        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: vault } }
+        - namespaceSelector: {}             # all namespaces
       ports:
-        - { protocol: TCP, port: 8080 }     # keycloak http
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 8000 }     # generic http
+        - { protocol: TCP, port: 8080 }     # keycloak / generic http
+        - { protocol: TCP, port: 8081 }     # argocd-server
         - { protocol: TCP, port: 8200 }     # vault
         - { protocol: TCP, port: 9000 }     # minio S3
-        - { protocol: TCP, port: 9001 }     # minio console
-        - { protocol: TCP, port: 80 }
-        - { protocol: TCP, port: 8081 }     # argocd
+        - { protocol: TCP, port: 9001 }     # minio console Service port
+        - { protocol: TCP, port: 9090 }     # minio console container port (Bitnami)
 
 # ╔════════════════════════════════════════════════════════════════════════════
 # ║ ARGOCD
