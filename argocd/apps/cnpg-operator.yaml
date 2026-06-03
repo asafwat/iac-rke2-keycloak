@@ -1,0 +1,42 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-operator
+  namespace: argocd
+  annotations:
+    # Operator + CRDs install cluster-wide at wave -1. The Cluster CR + backup
+    # + Keycloak CR all live in the keycloak wrapper chart (Phase 10) which
+    # syncs at wave 2 and references the CRDs registered here.
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://cloudnative-pg.github.io/charts
+    chart: cloudnative-pg
+    targetRevision: 0.28.2
+    helm:
+      releaseName: cnpg
+      values: |
+        # HA shape: 2 replicas with leader election. Soft anti-affinity (the
+        # chart's default) lets both schedule on the single lab node; on a
+        # multi-node cluster they'd spread automatically.
+        # If the second pod sits Pending due to hard anti-affinity, revert to
+        # replicaCount: 1 (same workaround as ArgoCD HA in Phase 3).
+        replicaCount: 2
+        resources:
+          requests: { cpu: 50m, memory: 64Mi }
+          limits:   { cpu: 200m, memory: 256Mi }
+        monitoring:
+          podMonitorEnabled: false   # TODO: flip when Prom/Grafana stack lands
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
