@@ -29,6 +29,15 @@ spec:
               memory: 128Mi
         speaker:
           enabled: true
+          # Disable the FRR-K8s BGP speaker. We use L2 mode only (L2Advertisement
+          # CR in metallb-config), so the BGP integration is unused. On this
+          # multi-NIC Vagrant box the FRR speaker binds to the wrong interface
+          # (10.0.2.15 NAT, not the 192.168.56.10 host-only network), then its
+          # liveness probe fails and the pod thrashes - cosmetic but noisy.
+          frr:
+            enabled: false
+          frrk8s:
+            enabled: false
           resources:
             requests:
               cpu: 50m
