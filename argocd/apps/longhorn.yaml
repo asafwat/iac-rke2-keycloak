@@ -70,6 +70,17 @@ spec:
         # ── Image pull strategy ──────────────────────────────────────────────
         image:
           pullPolicy: IfNotPresent
+
+        # ── Disable pre-upgrade checker ──────────────────────────────────────
+        # The Helm chart annotates longhorn-pre-upgrade Job with
+        # helm.sh/hook: pre-upgrade, which ArgoCD interprets as PreSync (runs
+        # BEFORE main resources). The Job needs longhorn-service-account, which
+        # the main release creates - so on first install, the Job hangs with
+        # `serviceaccount "longhorn-service-account" not found`. Disable it;
+        # it only matters during version upgrades, and we run one version.
+        preUpgradeChecker:
+          jobEnabled: false
+          upgradeVersionCheck: false
   destination:
     server: https://kubernetes.default.svc
     namespace: longhorn-system
