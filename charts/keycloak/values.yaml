@@ -2,6 +2,18 @@
 # Keycloak wrapper values
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── Wrapper: NetworkPolicies ─────────────────────────────────────────────────
+# Default-deny + explicit allow-listed pinholes. See templates/networkpolicy.yaml.
+networkPolicies:
+  enabled: true
+
+# ── Wrapper: Pod Security Admission ──────────────────────────────────────────
+# 'restricted' is the strictest PSS profile; 'baseline' is the common baseline.
+# CNPG Postgres + Keycloak both run as non-root and drop caps - restricted works.
+podSecurity:
+  enforce: true
+  level: restricted
+
 # ── Wrapper: ESO config ──────────────────────────────────────────────────────
 externalSecrets:
   enabled: true

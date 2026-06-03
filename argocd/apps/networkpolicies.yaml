@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: networkpolicies
+  namespace: argocd
+  annotations:
+    # Wave 4 - applied AFTER every workload namespace exists. Each namespace
+    # must already be present so the NetworkPolicy CRs can apply.
+    # Workload-specific policies (keycloak, minio) live inside their wrapper
+    # charts; this app covers the namespaces that use upstream Helm directly
+    # (vault, external-secrets, traefik, argocd, cert-manager, cnpg-system).
+    argocd.argoproj.io/sync-wave: "4"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/asafwat/iac-rke2-keycloak.git
+    targetRevision: main
+    path: manifests/networkpolicies
+  destination:
+    server: https://kubernetes.default.svc
+    # Resources are cluster-scoped namespaces - destination namespace here is
+    # just where ArgoCD tracks the Application object, not where resources land
+    # (each NetworkPolicy carries its own namespace).
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 20
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

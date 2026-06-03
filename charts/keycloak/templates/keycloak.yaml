@@ -53,3 +53,30 @@ spec:
     limits:
       cpu:    {{ .Values.keycloak.resources.limits.cpu }}
       memory: {{ .Values.keycloak.resources.limits.memory }}
+
+  # Pod Security: restricted PodSecurityStandard. Keycloak image already runs
+  # as UID 1000; we explicitly assert non-root, drop ALL capabilities, disable
+  # privilege escalation, and set RuntimeDefault seccomp.
+  #
+  # readOnlyRootFilesystem is intentionally NOT set: with startOptimized=false
+  # the operator runs `kc.sh start` which performs a build phase that writes
+  # under /opt/keycloak. Production would bake a custom image with `kc.sh build`
+  # and flip readOnlyRootFilesystem=true alongside startOptimized=true.
+  unsupported:
+    podTemplate:
+      spec:
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          fsGroup: 1000
+          seccompProfile:
+            type: RuntimeDefault
+        containers:
+          - name: keycloak
+            securityContext:
+              allowPrivilegeEscalation: false
+              runAsNonRoot: true
+              capabilities:
+                drop: [ALL]
+              seccompProfile:
+                type: RuntimeDefault

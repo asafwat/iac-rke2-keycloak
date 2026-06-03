@@ -1,0 +1,16 @@
+{{- if .Values.podSecurity.enforce }}
+# Pod Security Admission (PSA) labels on the keycloak namespace.
+# enforce: blocks pods that violate the standard.
+# audit / warn: logs/warns but doesn't block (useful while iterating).
+#
+# Keycloak operator + Keycloak StatefulSet + CNPG Postgres pods must all be
+# 'restricted'-compliant for this to work without breaking the namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  labels:
+    pod-security.kubernetes.io/enforce: {{ .Values.podSecurity.level | quote }}
+    pod-security.kubernetes.io/audit:   {{ .Values.podSecurity.level | quote }}
+    pod-security.kubernetes.io/warn:    {{ .Values.podSecurity.level | quote }}
+{{- end }}

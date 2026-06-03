@@ -1,0 +1,354 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# NetworkPolicies for un-wrappered namespaces (vault, external-secrets, traefik,
+# argocd, cert-manager, cnpg-system). The wrappered ones (keycloak, minio)
+# carry their own policies inside their Helm chart templates.
+#
+# Pattern in each namespace:
+#   1. default-deny-all (ingress + egress)
+#   2. allow-egress-dns (every pod talks to kube-dns)
+#   3. allow-egress-kube-apiserver (every controller needs the API server)
+#   4. namespace-specific pinholes (traefik backends, ESO -> Vault, etc.)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ╔════════════════════════════════════════════════════════════════════════════
+# ║ VAULT
+# ║   - Traefik can reach vault:8200 (UI/API ingress)
+# ║   - ESO can reach vault:8200 (reading secrets)
+# ║   - Vault can reach kube-apiserver (Kubernetes auth backend)
+# ╚════════════════════════════════════════════════════════════════════════════
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: default-deny-all, namespace: vault }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-egress-dns, namespace: vault }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector:       { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-egress-apiserver, namespace: vault }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - { protocol: TCP, port: 6443 }
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-ingress-vault, namespace: vault }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: vault }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: traefik } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: external-secrets } }
+        - podSelector: {}                       # intra-namespace (Raft peers, init script)
+      ports:
+        - { protocol: TCP, port: 8200 }
+        - { protocol: TCP, port: 8201 }         # cluster_address (Raft)
+
+# ╔════════════════════════════════════════════════════════════════════════════
+# ║ EXTERNAL-SECRETS
+# ║   - kube-apiserver -> webhook:443 (admission webhook)
+# ║   - ESO controller -> Vault (egress)
+# ║   - ESO controller -> kube-apiserver (egress)
+# ╚════════════════════════════════════════════════════════════════════════════
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: default-deny-all, namespace: external-secrets }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-egress-dns, namespace: external-secrets }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector:       { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-egress-apiserver-and-vault, namespace: external-secrets }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - { protocol: TCP, port: 6443 }
+        - { protocol: TCP, port: 443 }
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: vault } }
+      ports:
+        - { protocol: TCP, port: 8200 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-ingress-webhook, namespace: external-secrets }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: external-secrets-webhook }
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 10250 }
+        - { protocol: TCP, port: 9443 }          # actual webhook port
+        - { protocol: TCP, port: 443 }
+
+# ╔════════════════════════════════════════════════════════════════════════════
+# ║ TRAEFIK
+# ║   - Ingress from anywhere (MetalLB advertises, external clients on 80/443)
+# ║   - Egress to all backend namespaces (argocd, keycloak, minio, vault)
+# ╚════════════════════════════════════════════════════════════════════════════
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: default-deny-all, namespace: traefik }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-egress-dns, namespace: traefik }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector:       { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-ingress-from-anywhere, namespace: traefik }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 8000 }     # internal pod port mapped to 80
+        - { protocol: TCP, port: 8443 }     # internal pod port mapped to 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-egress-to-backends, namespace: traefik }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: argocd } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: keycloak } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: minio } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: vault } }
+      ports:
+        - { protocol: TCP, port: 8080 }     # keycloak http
+        - { protocol: TCP, port: 8200 }     # vault
+        - { protocol: TCP, port: 9000 }     # minio S3
+        - { protocol: TCP, port: 9001 }     # minio console
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 8081 }     # argocd
+
+# ╔════════════════════════════════════════════════════════════════════════════
+# ║ ARGOCD
+# ║   - Traefik can reach argocd-server
+# ║   - Repo-server needs egress to github + helm repos (port 443)
+# ║   - Application-controller needs egress to kube-apiserver
+# ╚════════════════════════════════════════════════════════════════════════════
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: default-deny-all, namespace: argocd }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-egress-dns, namespace: argocd }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector:       { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-egress-apiserver-and-internet, namespace: argocd }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - { protocol: TCP, port: 6443 }     # kube-apiserver
+        - { protocol: TCP, port: 443 }      # git, helm repos, external HTTPS
+        - { protocol: TCP, port: 22 }       # git over SSH (if used)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-intra-argocd, namespace: argocd }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}                   # any pod within argocd ns
+  egress:
+    - to:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-ingress-from-traefik, namespace: argocd }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: argocd-server }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: traefik } }
+      ports:
+        - { protocol: TCP, port: 8080 }
+
+# ╔════════════════════════════════════════════════════════════════════════════
+# ║ CERT-MANAGER
+# ║   - kube-apiserver -> webhook:10250 (admission webhook)
+# ║   - controller egress to kube-apiserver
+# ╚════════════════════════════════════════════════════════════════════════════
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: default-deny-all, namespace: cert-manager }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-egress-dns, namespace: cert-manager }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector:       { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-egress-apiserver, namespace: cert-manager }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - { protocol: TCP, port: 6443 }
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-ingress-webhook, namespace: cert-manager }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/component: webhook }
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 10250 }
+        - { protocol: TCP, port: 9443 }
+
+# ╔════════════════════════════════════════════════════════════════════════════
+# ║ CNPG-SYSTEM
+# ║   - kube-apiserver -> cnpg webhook
+# ║   - cnpg controller -> kube-apiserver + cnpg-managed pods in keycloak ns
+# ╚════════════════════════════════════════════════════════════════════════════
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: default-deny-all, namespace: cnpg-system }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-egress-dns, namespace: cnpg-system }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector:       { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-egress-apiserver-and-cnpg-pods, namespace: cnpg-system }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - { protocol: TCP, port: 6443 }
+        - { protocol: TCP, port: 443 }
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: keycloak } }
+          podSelector:       { matchLabels: { cnpg.io/cluster: keycloak-db } }
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 8000 }
+        - { protocol: TCP, port: 9443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: allow-ingress-webhook, namespace: cnpg-system }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 9443 }
+        - { protocol: TCP, port: 8080 }

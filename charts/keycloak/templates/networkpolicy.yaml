@@ -1,0 +1,179 @@
+{{- if .Values.networkPolicies.enabled }}
+# ─────────────────────────────────────────────────────────────────────────────
+# NetworkPolicies for the keycloak namespace.
+# Default-deny everything; allow only the explicit pinholes we need.
+# ─────────────────────────────────────────────────────────────────────────────
+---
+# 0. Default-deny all ingress + egress (foundation).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# 1. Allow DNS egress (every pod talks to kube-dns).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# 2. Allow Traefik to reach the Keycloak HTTP service.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traefik-to-keycloak
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: keycloak                 # Keycloak StatefulSet pods
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - { protocol: TCP, port: 8080 }      # http listener (TLS terminates at Traefik)
+---
+# 3. Allow Keycloak pods to reach the Postgres rw service inside this namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-keycloak-to-postgres
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: keycloak
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: keycloak-db
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+# 4. Allow Postgres replication + CNPG operator traffic INSIDE the namespace.
+# Primary <-> standby streaming replication, plus instance-manager <-> kube-apiserver.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-intra-cluster
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: keycloak-db
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: keycloak-db
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 8000 }   # cnpg metrics
+        - { protocol: TCP, port: 9187 }   # postgres-exporter
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: keycloak-db
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - { protocol: TCP, port: 9443 }
+---
+# 5. Allow Postgres to reach MinIO (barmanObjectStore backup uploads).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-to-minio
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: keycloak-db
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: minio
+      ports:
+        - { protocol: TCP, port: 9000 }
+---
+# 6. Allow Keycloak operator to reach Keycloak pods (it manages the StatefulSet).
+# Operator runs in the same namespace; allow it to talk to keycloak pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-operator-to-keycloak
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: keycloak
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: keycloak-operator
+      ports:
+        - { protocol: TCP, port: 8080 }
+        - { protocol: TCP, port: 9000 }   # management port
+---
+# 7. Allow Keycloak operator + Keycloak app to reach the kube-apiserver.
+# Operator: watches Keycloak CRs. Keycloak app: K8sPing discovery for the
+# JGroups cluster (Infinispan cache). Both reach kube-apiserver via the
+# kubernetes.default Service - which is an IP, not a pod - so we use a
+# special podSelector-less egress with the cluster API server port (6443).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-kube-apiserver
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - { protocol: TCP, port: 6443 }
+        - { protocol: TCP, port: 443 }     # in case any controller talks via 443
+{{- end }}

@@ -378,6 +378,15 @@ spec:
         app.kubernetes.io/name: keycloak-operator
         app.kubernetes.io/version: 26.6.2
     spec:
+      # Pod-level security context for restricted PSS compliance.
+      # The keycloak ns is labeled pod-security.kubernetes.io/enforce=restricted
+      # (see charts/keycloak/templates/namespace.yaml) so this pod must comply.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - env:
             - name: KUBERNETES_NAMESPACE
@@ -392,6 +401,13 @@ spec:
               value: JOSDK_WATCH_CURRENT
           image: quay.io/keycloak/keycloak-operator:26.6.2
           imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
           # Liveness/readiness relaxed from upstream (failureThreshold: 3 → 10,
           # period 10s → 15s, timeout 10s → 15s). Vert.x event loop gets
           # blocked 3-5s at a time while Jackson deserializes the 519KB CRD,

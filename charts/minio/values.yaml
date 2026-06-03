@@ -4,6 +4,11 @@
 # Top-level keys configure THIS wrapper's ESO templates.
 # `minio:` → bitnami/minio subchart.
 
+# ── Wrapper: NetworkPolicies ─────────────────────────────────────────────────
+# Default-deny + explicit allow-listed pinholes. See templates/networkpolicy.yaml.
+networkPolicies:
+  enabled: true
+
 # ── Wrapper: ESO config ──────────────────────────────────────────────────────
 externalSecrets:
   enabled: true
