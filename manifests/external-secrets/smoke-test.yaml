@@ -1,0 +1,36 @@
+# PHASE 7 SMOKE TEST - delete after verification.
+#
+# Pulls secret/minio/admin from Vault and materializes it as a K8s Secret named
+# smoke-minio-admin in the default namespace. Used once to prove the full chain
+# (ESO -> ClusterSecretStore -> Vault K8s auth -> KV v2 -> K8s Secret) works.
+#
+# Verify:
+#   kubectl -n default get externalsecret smoke-minio-admin
+#   kubectl -n default get secret smoke-minio-admin -o jsonpath='{.data.user}' | base64 -d
+#   # Expect: minio-admin
+#
+# Cleanup after verify:
+#   kubectl -n default delete externalsecret smoke-minio-admin
+#   (and remove this file from the repo)
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: smoke-minio-admin
+  namespace: default
+spec:
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: vault
+    kind: ClusterSecretStore
+  target:
+    name: smoke-minio-admin
+    creationPolicy: Owner
+  data:
+    - secretKey: user
+      remoteRef:
+        key: minio/admin
+        property: user
+    - secretKey: password
+      remoteRef:
+        key: minio/admin
+        property: password
