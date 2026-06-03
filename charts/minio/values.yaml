@@ -21,16 +21,22 @@ minio:
   # Bitnami moved free-tier images from docker.io/bitnami/* to
   # docker.io/bitnamilegacy/* in mid-2025. The chart still defaults to
   # bitnami/* (404s on pull), so override every image the chart references.
+  #
+  # The chart reuses `defaultInitContainers.volumePermissions.image` not just
+  # for the (disabled-by-default) chown init container but also for the
+  # `wait-for-available-minio` init container in the provisioning Job - so
+  # that image must be overridden even though we don't enable volumePermissions.
   image:
     repository: bitnamilegacy/minio
   clientImage:
     repository: bitnamilegacy/minio-client
-  volumePermissions:
-    image:
-      repository: bitnamilegacy/os-shell
   console:
     image:
       repository: bitnamilegacy/minio-object-browser
+  defaultInitContainers:
+    volumePermissions:
+      image:
+        repository: bitnamilegacy/os-shell
 
   # Root credentials come from a K8s Secret materialized by the ExternalSecret
   # template in templates/eso.yaml (Vault path: secret/minio/admin).
