@@ -20,7 +20,7 @@ minio:
   # ── Image registry override ────────────────────────────────────────────────
   # Bitnami moved free-tier images from docker.io/bitnami/* to
   # docker.io/bitnamilegacy/* in mid-2025. The chart still defaults to
-  # bitnami/* (404s on pull), so override every image we use.
+  # bitnami/* (404s on pull), so override every image the chart references.
   image:
     repository: bitnamilegacy/minio
   clientImage:
@@ -28,6 +28,9 @@ minio:
   volumePermissions:
     image:
       repository: bitnamilegacy/os-shell
+  console:
+    image:
+      repository: bitnamilegacy/minio-object-browser
 
   # Root credentials come from a K8s Secret materialized by the ExternalSecret
   # template in templates/eso.yaml (Vault path: secret/minio/admin).
