@@ -33,6 +33,17 @@ minio:
   console:
     image:
       repository: bitnamilegacy/minio-object-browser
+    # Console UI ingress: https://minio.lab.test
+    # Path is `console.ingress` in chart 17.x (was top-level consoleIngress in older charts).
+    ingress:
+      enabled: true
+      ingressClassName: traefik
+      annotations:
+        cert-manager.io/cluster-issuer: lab-ca-issuer
+        traefik.ingress.kubernetes.io/router.entrypoints: websecure
+        traefik.ingress.kubernetes.io/router.tls: "true"
+      hostname: minio.lab.test
+      tls: true
   defaultInitContainers:
     volumePermissions:
       image:
@@ -65,17 +76,6 @@ minio:
       traefik.ingress.kubernetes.io/router.entrypoints: websecure
       traefik.ingress.kubernetes.io/router.tls: "true"
     hostname: minio-api.lab.test
-    tls: true
-
-  # ── Console UI ingress: https://minio.lab.test ────────────────────────────
-  consoleIngress:
-    enabled: true
-    ingressClassName: traefik
-    annotations:
-      cert-manager.io/cluster-issuer: lab-ca-issuer
-      traefik.ingress.kubernetes.io/router.entrypoints: websecure
-      traefik.ingress.kubernetes.io/router.tls: "true"
-    hostname: minio.lab.test
     tls: true
 
   resources:
