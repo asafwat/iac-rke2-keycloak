@@ -24,6 +24,7 @@ postgres:
   instances: 2                                # primary + sync replica - demonstrates HA at the DB layer
   imageName: ghcr.io/cloudnative-pg/postgresql:17.6   # Keycloak 26.x docs: "tested with PostgreSQL 17". PG 18 not on Keycloak's test matrix as of mid-2026.
   storageSize: 2Gi
+  storageClass: longhorn                      # Longhorn-backed PVCs: replicated + nightly snapshot+backup to MinIO via RecurringJob.
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits:   { cpu: 500m, memory: 512Mi }

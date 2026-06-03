@@ -1,0 +1,17 @@
+# Longhorn Settings CRs to configure the S3 backup target.
+# These point Longhorn at MinIO + tell it which Secret holds the credentials.
+# Both Settings must exist for Longhorn to consider the backup target valid.
+---
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: backup-target
+  namespace: {{ .Release.Namespace }}
+value: "s3://{{ .Values.backupTarget.bucket }}@{{ .Values.backupTarget.region }}/"
+---
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: backup-target-credential-secret
+  namespace: {{ .Release.Namespace }}
+value: "longhorn-backup-target"        # name of the Secret materialized by the ExternalSecret in eso-backup-target.yaml

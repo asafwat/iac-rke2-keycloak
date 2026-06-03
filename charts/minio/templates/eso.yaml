@@ -94,4 +94,41 @@ spec:
       remoteRef:
         key: minio/vault-snapshot-keys
         property: secret_key
+---
+# 4. Longhorn backup-target user - scoped to longhorn-backups bucket.
+# Same env-file pattern as above; consumed by MinIO provisioning Job which
+# creates the user + binds longhorn-backup-policy. The longhorn-config
+# Application materializes a SEPARATE Secret (longhorn-backup-target) with
+# AWS_ACCESS_KEY_ID / _SECRET_ACCESS_KEY keys that Longhorn itself reads.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: minio-longhorn-backup-creds
+  namespace: {{ .Release.Namespace }}
+spec:
+  refreshInterval: {{ .Values.externalSecrets.refreshInterval }}
+  secretStoreRef:
+    name: {{ .Values.externalSecrets.secretStoreRef.name }}
+    kind: {{ .Values.externalSecrets.secretStoreRef.kind }}
+  target:
+    name: minio-longhorn-backup-creds
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      data:
+        longhorn-backup: |
+          username={{ `{{ .accessKey }}` }}
+          password={{ `{{ .secretKey }}` }}
+          disabled=false
+          policies=longhorn-backup-policy
+          setPolicies=true
+  data:
+    - secretKey: accessKey
+      remoteRef:
+        key: minio/longhorn-backup-keys
+        property: access_key
+    - secretKey: secretKey
+      remoteRef:
+        key: minio/longhorn-backup-keys
+        property: secret_key
 {{- end }}

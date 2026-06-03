@@ -14,7 +14,10 @@ spec:
 
   storage:
     size: {{ .Values.postgres.storageSize }}
-    # storageClass: local-path is the cluster default (Phase 5)
+    # Longhorn-backed: replicated block storage + nightly snapshot+backup to
+    # MinIO via Longhorn RecurringJob. Independent of CNPG's barmanObjectStore
+    # WAL archiving below - storage-layer protection vs DB-layer PITR.
+    storageClass: {{ .Values.postgres.storageClass | default "longhorn" }}
 
   bootstrap:
     initdb:

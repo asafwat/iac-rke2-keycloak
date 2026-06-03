@@ -56,13 +56,17 @@ minio:
     rootUserSecretKey:     root-user
     rootPasswordSecretKey: root-password
 
-  # Pre-create buckets used by CNPG and Vault snapshots.
-  defaultBuckets: "cnpg-backups,vault-backups"
+  # Pre-create buckets used by CNPG, Vault, and Longhorn backups.
+  defaultBuckets: "cnpg-backups,vault-backups,longhorn-backups"
 
   persistence:
     enabled: true
     size: 10Gi
-    # storageClass: local-path is the cluster default (Phase 5).
+    # MUST be local-path. MinIO is the Longhorn S3 backup target itself - if
+    # MinIO's own PVC sat on Longhorn, restoring Longhorn from MinIO would
+    # require MinIO to be up, which would require Longhorn to be up. Pin to
+    # the simple local-path StorageClass to break the cycle.
+    storageClass: local-path
 
   service:
     type: ClusterIP
@@ -107,12 +111,21 @@ minio:
             resources:
               - "arn:aws:s3:::vault-backups"
               - "arn:aws:s3:::vault-backups/*"
+      - name: longhorn-backup-policy
+        statements:
+          - effect: Allow
+            actions:
+              - "s3:*"
+            resources:
+              - "arn:aws:s3:::longhorn-backups"
+              - "arn:aws:s3:::longhorn-backups/*"
 
     # Users defined via existing K8s Secrets (materialized by ESO).
     # Each secret holds env-file-format user definitions.
     usersExistingSecrets:
       - minio-cnpg-backup-creds
       - minio-vault-snapshot-creds
+      - minio-longhorn-backup-creds
 
     resources:
       requests: { cpu: 50m, memory: 64Mi }

@@ -1,0 +1,96 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: longhorn
+  namespace: argocd
+  annotations:
+    # Same foundational wave as local-path. PVCs without storageClassName
+    # will land on Longhorn (set as default below); workloads that must avoid
+    # Longhorn (MinIO - the backup target itself) opt out via
+    # storageClassName: local-path.
+    argocd.argoproj.io/sync-wave: "-4"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://charts.longhorn.io
+    chart: longhorn
+    targetRevision: 1.12.0
+    helm:
+      releaseName: longhorn
+      values: |
+        # ── StorageClass defaults ────────────────────────────────────────────
+        # Longhorn ships its own StorageClass `longhorn` and sets it as the
+        # cluster default via the is-default-class annotation. Single-node
+        # lab -> replicaCount=1 (no peers to replicate to). Production: 3.
+        persistence:
+          defaultClass: true
+          defaultClassReplicaCount: 1
+          reclaimPolicy: Delete
+          # Wait until pod schedules before provisioning - matches local-path
+          # behaviour, avoids stranding PVs on the wrong node in multi-node setups.
+          volumeBindingMode: WaitForFirstConsumer
+
+        # ── Global defaults ──────────────────────────────────────────────────
+        defaultSettings:
+          # Lab is single-node - skip replication. Production: 3.
+          defaultReplicaCount: 1
+          # Schedule replicas on the same node anyway (single-node).
+          replicaSoftAntiAffinity: true
+          # Lab disk filter - accept the root disk. Production would dedicate
+          # a separate disk and tag it explicitly.
+          defaultDataPath: /var/lib/longhorn
+          # Backup target is configured POST-install via the longhorn-config
+          # Application (wave 3), since the credential Secret comes from ESO
+          # which needs Vault + ESO controller running first.
+          # backupTarget: s3://longhorn-backups@us-east-1/  (set in longhorn-config)
+          # backupTargetCredentialSecret: longhorn-backup-target  (set in longhorn-config)
+
+          # Storage-over-provisioning OK for a single-node lab; production
+          # would tune this to actual disk capacity headroom.
+          storageOverProvisioningPercentage: 200
+          # Minimum free space on host disk before Longhorn refuses new volumes.
+          storageMinimalAvailablePercentage: 10
+
+        # ── Longhorn UI (exposed via Traefik) ────────────────────────────────
+        # NOT exposed by default in this lab - access via kubectl port-forward
+        # for ops. Production would put it behind Keycloak OIDC.
+        ingress:
+          enabled: false
+
+        # ── Manager / driver resources (modest for single-node lab) ──────────
+        longhornManager:
+          tolerations: []
+          priorityClass: ""
+        longhornDriver:
+          tolerations: []
+          priorityClass: ""
+
+        # ── Image pull strategy ──────────────────────────────────────────────
+        image:
+          pullPolicy: IfNotPresent
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: longhorn-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      # CRDs are large - skip kubectl apply-side dry-run, let SSA handle.
+      - SkipDryRunOnMissingResource=true
+  # Longhorn manager mutates several fields post-create (status, labels,
+  # selector hashes). These are normal and would otherwise show as drift.
+  ignoreDifferences:
+    - group: apps
+      kind: DaemonSet
+      jsonPointers:
+        - /spec/template/metadata/annotations
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/clusterIP
+        - /spec/clusterIPs

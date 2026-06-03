@@ -41,8 +41,11 @@ spec:
             enabled: true
             size: 5Gi
             accessMode: ReadWriteOnce
-            # storageClassName: local-path is the cluster default (set in Phase 5),
-            # so omitted here.
+            # Longhorn-backed: PVC is snapshotted + backed up daily to MinIO
+            # via the longhorn-config RecurringJob (Phase 5.5). This is
+            # storage-layer protection; app-layer Raft snapshots are taken
+            # separately by the Vault snapshot CronJob (Phase 11).
+            storageClass: longhorn
           resources:
             requests: { cpu: 100m, memory: 128Mi }
             limits:   { cpu: 500m, memory: 256Mi }
