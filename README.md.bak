@@ -381,7 +381,8 @@ Quick reference:
 ```powershell
 # Nuclear (recommended when rebuilding anyway)
 vagrant destroy -f
-Remove-Item kubeconfig, terraform\vault-keys.json -ErrorAction SilentlyContinue
+Remove-Item kubeconfig, terraformvault-keys.json -ErrorAction SilentlyContinue
+Remove-Item "$env:USERPROFILEVirtualBox VMske2-server-1" -Recurse -Force -ErrorAction SilentlyContinue
 ```
 
 ## Production gaps (what I would change for production)
