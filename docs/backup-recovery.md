@@ -207,24 +207,46 @@ is idempotent — it doesn't overwrite an existing role.
   materialized into the `vault` namespace as the K8s Secret
   `vault-snapshot-minio-creds` by ESO
 
-### Trigger a manual run
+### Trigger a manual run + verify the snapshot landed in MinIO
+
+**Windows / PowerShell:**
 
 ```powershell
-kubectl -n vault create job --from=cronjob/vault-snapshot vault-snapshot-manual-$(Get-Date -Format yyyyMMddHHmm)
-kubectl -n vault wait --for=condition=complete job/<job-name> --timeout=120s
-kubectl -n vault logs job/<job-name> -c snapshot
-kubectl -n vault logs job/<job-name> -c upload
-```
+$jobName = "vault-snapshot-manual-$(Get-Date -Format yyyyMMddHHmmss)"
+kubectl -n vault create job --from=cronjob/vault-snapshot $jobName
 
-### Verify the snapshot landed in MinIO
+# Wait for completion (init container + main container, ~30-45s total)
+kubectl -n vault wait --for=condition=complete job/$jobName --timeout=120s
 
-```powershell
-$pod = kubectl -n minio get pod -l app.kubernetes.io/name=minio -o jsonpath='{.items[0].metadata.name}'
+# Inspect both container logs
+kubectl -n vault logs job/$jobName -c snapshot
+kubectl -n vault logs job/$jobName -c upload
+
+# List vault-backups bucket (self-contained: re-derives MinIO alias)
+$pod  = kubectl -n minio get pod -l app.kubernetes.io/name=minio -o jsonpath='{.items[0].metadata.name}'
 $root = (kubectl -n minio get secret minio-root-credentials -o jsonpath='{.data}' | ConvertFrom-Json)
-$u = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($root.'root-user'))
-$p = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($root.'root-password'))
+$u    = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($root.'root-user'))
+$p    = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($root.'root-password'))
 kubectl -n minio exec $pod -- mc alias set local http://localhost:9000 $u $p
 kubectl -n minio exec $pod -- mc ls --recursive local/vault-backups/
+# Should show vault-snapshot-<timestamp>.snap
+```
+
+**Linux / macOS / bash:**
+
+```bash
+job="vault-snapshot-manual-$(date +%Y%m%d%H%M%S)"
+kubectl -n vault create job --from=cronjob/vault-snapshot "$job"
+kubectl -n vault wait --for=condition=complete job/"$job" --timeout=120s
+kubectl -n vault logs job/"$job" -c snapshot
+kubectl -n vault logs job/"$job" -c upload
+
+# Self-contained mc setup
+pod=$(kubectl -n minio get pod -l app.kubernetes.io/name=minio -o jsonpath='{.items[0].metadata.name}')
+u=$(kubectl -n minio get secret minio-root-credentials -o jsonpath='{.data.root-user}' | base64 -d)
+p=$(kubectl -n minio get secret minio-root-credentials -o jsonpath='{.data.root-password}' | base64 -d)
+kubectl -n minio exec "$pod" -- mc alias set local http://localhost:9000 "$u" "$p"
+kubectl -n minio exec "$pod" -- mc ls --recursive local/vault-backups/
 ```
 
 ### Restore from a Vault snapshot
