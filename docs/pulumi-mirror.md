@@ -219,8 +219,9 @@ What was actually exercised end-to-end during the assessment:
 |---|---|
 | `go build ./...` | Clean. No errors, no warnings. |
 | `pulumi preview` (against a stack with `Pulumi.dev.yaml`) | Resolved 8 resources to create: stack → VM (component) → vm-up + vm-provision Commands; ArgoCD (component) → k8s provider + Helm Release + root-app Command. No errors. |
-| `terraform destroy` of the existing TF-built cluster | VM gone, kubeconfig + vault-keys.json cleaned. |
+| Pre-Pulumi cleanup — `vagrant destroy -f` of the existing TF-built cluster + orphan VirtualBox directory removed | Slot empty, ready for the Pulumi path to claim the same VM name (`rke2-server-1`) and host-only IP (`192.168.56.10`). |
 | `scripts/ps/bootstrap-pulumi.ps1 -WaitForHealthy` (cold start) | Pre-flight passed, `pulumi up` built VM + installed RKE2 + ArgoCD + applied root-app, vault-0 reached Running, `init-vault.ps1` ran from within the wrapper, Vault initialized + unsealed + KV/k8s-auth enabled + ESO and `vault-snapshot` roles created. |
+| `pulumi destroy --yes --stack dev` after testing | Cluster torn down cleanly; stack metadata retained (removable via `pulumi stack rm dev`). |
 | ArgoCD reconciling child Apps | Same wave order, same Healthy end state as the TF path. |
 
 The mirror is not a future commitment — it's in the repo, in

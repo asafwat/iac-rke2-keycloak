@@ -121,10 +121,10 @@ What the wrapper does, step by step:
                    → vault kv put secret/<seed paths>
                    → vault auth enable kubernetes
                    → vault write auth/kubernetes/config token_reviewer_jwt=<eso SA token>
-                   → vault write auth/kubernetes/role/external-secrets …
-                   → vault policy write eso-secret-reader …
-                   → vault write auth/kubernetes/role/vault-snapshot …
-                   → vault policy write vault-snapshot-policy …
+                   → vault write auth/kubernetes/role/external-secrets
+                   → vault policy write eso-secret-reader
+                   → vault write auth/kubernetes/role/vault-snapshot
+                   → vault policy write vault-snapshot-policy
 
 5. ESO catches up (cluster-side, automatic)
    → ClusterSecretStore 'vault' transitions Valid
@@ -212,8 +212,18 @@ ArgoCD applies child Applications in wave order. Earlier waves must reach `Healt
 
 - **An ingress controller other than Traefik.** RKE2 ships Traefik by default but we disable it (in `/etc/rancher/rke2/config.yaml`) and install our own via ArgoCD so the version + config are pinned in Git.
 - **A service mesh.** mTLS between pods is a common production add-on but adds significant complexity (sidecar injection, certificate rotation, traffic policies). NetworkPolicies cover the lab's L4 security needs.
-- **A separate Postgres for each component.** CNPG is dedicated to Keycloak. ArgoCD uses its bundled SQLite (configmap state). Vault uses Raft. This avoids the "every workload spins up its own DB" anti-pattern.
-- **An external git server.** The repo lives on GitHub; ArgoCD pulls over HTTPS. A private cluster-internal git server (Gitea/forgejo) would be needed if the lab were air-gapped.
+- **A shared/multi-tenant Postgres database for multiple components.** Each workload uses the storage backend its own operator supports natively:
+  - **Keycloak** has a dedicated **CNPG Cluster** (the only thing that actually needs a relational DB)
+  - **ArgoCD** stores its declarative state in **Kubernetes ConfigMaps + Secrets** (it doesn't use SQLite); operational state lives in **Redis**
+  - **Vault** uses **Raft** as its storage backend (built into Vault, no external DB)
+
+  This avoids the "spin up a generic shared Postgres and have N workloads contend for it" anti-pattern. Each workload's storage matches what its operator natively expects, so upgrades, backups, and operations stay isolated and operator-managed.
+- **An authenticated / private Git repository.** The lab's repo is **public on GitHub** and ArgoCD pulls anonymously over HTTPS — fine for a lab. Production GitOps would use a **private repository** with one of:
+  - Git provider OAuth token (GitHub App, GitLab deploy token) materialized as a K8s Secret in the `argocd` namespace and referenced by ArgoCD's `repo-credentials` template
+  - SSH deploy key (also via K8s Secret + `repo-credentials`)
+  - **The credential itself stored in Vault and materialized by ESO** — same pattern this lab uses for every other secret, so Git credentials aren't plaintext in any cluster manifest
+
+  An air-gapped cluster (no GitHub egress) additionally needs a **cluster-internal Git server** (Gitea, Forgejo, or GitLab CE) that ArgoCD's repo-server can reach.
 - **Longhorn (or any replicated block storage).** Resources limitations on a single-node lab. See `production-gaps.md`.
 
 ## Things that look like complexity but aren't

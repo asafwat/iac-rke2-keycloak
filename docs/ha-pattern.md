@@ -5,7 +5,7 @@
 > The single-VM Vagrant provisioner is a convenience for the lab
 > assessment — it keeps the reviewer flow to one command and zero cloud
 > dependencies. The production path described below replaces Vagrant
-> entirely; the IaC layer keeps Terraform, but its provider plugs into a real
+> entirely; the IaC layer keeps Terraform/Pulumi, but its provider plugs into a real
 > hypervisor / cloud and Ansible takes over OS-level orchestration.
 >
 > For the storage pivot (Longhorn + external MinIO) and other application-
@@ -39,23 +39,34 @@ multi-tool pipeline:
 └─────────────┘     └──────────────┘     └──────────────┘     └───────────────────┘
 ```
 
-### Layer 1 — Infrastructure (Terraform, real providers)
+### Layer 1 — Infrastructure (Terraform or Pulumi, real providers)
 
-Terraform stays. Only the **provider** swaps:
+The **IaC tool stays the same** — Terraform or the Pulumi+Go mirror in
+[`pulumi-mirror.md`](pulumi-mirror.md). Only the **provider** swaps from
+Vagrant/VirtualBox to one that targets real infrastructure:
 
-| Substrate | Terraform provider | Typical environment |
-|---|---|---|
-| **On-prem virtualization** | `vsphere`, `harvester`, `proxmox`, `xenserver` | VMware vSphere, SUSE Harvester (HCI built on Kubernetes), Proxmox, KVM |
-| **Bare metal** | `metal3`, `tinkerbell`, `equinix` | Metal³ (Kubernetes-native bare-metal lifecycle), Tinkerbell, Equinix Metal |
-| **Public cloud** | `aws`, `google`, `azurerm`, `oci` | EC2 + VPC, GCE + VPC, Azure VM + VNet, OCI Compute |
-| **Sovereign cloud** | provider for the local stack (G42, etc.) | UAE-resident infrastructure for local deployments |
+| Substrate | Terraform provider | Pulumi provider | Typical environment |
+|---|---|---|---|
+| **On-prem virtualization** | `vsphere`, `harvester`, `proxmox`, `xenserver` | `pulumi-vsphere`, `pulumi-proxmoxve` (community), Harvester via Kubernetes provider | VMware vSphere, SUSE Harvester (HCI built on Kubernetes), Proxmox, KVM |
+| **Bare metal** | `metal3`, `tinkerbell`, `equinix` | `pulumi-equinix`, Metal³ via Kubernetes provider | Metal³ (Kubernetes-native bare-metal lifecycle), Tinkerbell, Equinix Metal |
+| **Public cloud** | `aws`, `google`, `azurerm`, `oci` | `pulumi-aws`, `pulumi-gcp`, `pulumi-azure-native`, `pulumi-oci` | EC2 + VPC, GCE + VPC, Azure VM + VNet, OCI Compute |
+| **Sovereign cloud** | provider for the local stack (G42, etc.) | same | UAE-resident infrastructure for local deployments |
 
-The Terraform module structure stays the same — `terraform/main.tf`
-declares VMs, the network, the load-balancer object, and outputs. Only
-the resource types change (`vsphere_virtual_machine` instead of
-`null_resource` + `vagrant up`). Variables like `ha_mode`,
+The IaC module structure stays the same — `terraform/main.tf` (or
+`pulumi/main.go`) declares VMs, the network, the load-balancer object,
+and outputs. Only the resource types change (`vsphere_virtual_machine`
+instead of `null_resource` + `vagrant up` on the Terraform side; the
+equivalent `vsphere.VirtualMachine` constructor on the Pulumi side
+replacing `command.local.Command`). Variables like `ha_mode`,
 `control_plane_count`, `worker_count`, `vm_memory_gb`, `disk_class`
 become first-class inputs.
+
+**Pulumi-specific advantage for the HA pivot:** the `ha_mode`
+conditional in Pulumi+Go is materially cleaner than HCL —
+`for i := 0; i < cfg.ControlPlaneCount; i++ { ... }` reads like normal
+code, where HCL's `count = var.ha_mode ? 3 : 1` + `count.index` indexing
+gets awkward at 3+ nodes with peer references between them. See
+[`pulumi-mirror.md`](pulumi-mirror.md) for the design parity table.
 
 ### Layer 2 — OS bootstrap (cloud-init)
 
@@ -213,6 +224,8 @@ HA cluster behind it.
 
 ## How `ha_mode` flag would gate this
 
+### Terraform shape
+
 ```hcl
 variable "ha_mode" {
   description = "If true, build full HA RKE2 cluster via the production pipeline (vSphere/Harvester/cloud provider + cloud-init + Ansible). If false, build the single-node Vagrant PoC."
@@ -238,6 +251,63 @@ variable "worker_count" {
 The default stays single-VM Vagrant so the assessment flow remains
 "clone + bootstrap." `terraform apply -var ha_mode=true` switches to
 the production topology.
+
+### Pulumi+Go shape (equivalent, reads more naturally for HA)
+
+```go
+// pulumi/pkg/config/config.go
+type Config struct {
+    HaMode             bool   // false (PoC) or true (HA)
+    ControlPlaneCount  int    // default 3
+    WorkerCount        int    // default 3
+    // ... existing VM fields
+}
+
+// pulumi/main.go
+func main() {
+    pulumi.Run(func(ctx *pulumi.Context) error {
+        cfg := config.Load(ctx)
+
+        if !cfg.HaMode {
+            // PoC path — single Vagrant VM as today
+            _, err := vagrant.NewVM(ctx, "rke2-vm", &vagrant.VMArgs{...})
+            return err
+        }
+
+        // HA path — provision N control-plane + M worker VMs via the
+        // chosen substrate provider (vsphere / harvester / cloud).
+        var controlPlanes []*vsphere.VirtualMachine
+        for i := 0; i < cfg.ControlPlaneCount; i++ {
+            cp, err := vsphere.NewVirtualMachine(ctx,
+                fmt.Sprintf("rke2-cp-%d", i+1), ...)
+            if err != nil { return err }
+            controlPlanes = append(controlPlanes, cp)
+        }
+        for i := 0; i < cfg.WorkerCount; i++ {
+            _, err := vsphere.NewVirtualMachine(ctx,
+                fmt.Sprintf("rke2-worker-%d", i+1), ...)
+            if err != nil { return err }
+        }
+
+        // Hand off to Ansible via a command.local.Command that takes
+        // the Pulumi outputs (IPs) as inventory input.
+        _, err := ansible.NewBootstrap(ctx, "rke2-ansible", &ansible.Args{
+            ControlPlanes: controlPlanes,
+            // ...
+        }, pulumi.DependsOn(controlPlanes))
+        return err
+    })
+}
+```
+
+The Go `for i := 0; i < N; i++` loop reads like normal code; HCL's
+`count = var.ha_mode ? N : 1` + `count.index` indexing gets awkward
+when you need cross-references (e.g. workers joining via specific
+control-plane IPs). Same outcome on either path — pick the tool your
+team prefers.
+
+`pulumi up --config ha_mode=true` switches to HA the same way
+`terraform apply -var ha_mode=true` does.
 
 ## Repo layout this would add
 

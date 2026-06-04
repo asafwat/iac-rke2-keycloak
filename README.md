@@ -1,10 +1,13 @@
 # iac-rke2-keycloak
 
-> Reproducible deployment of Keycloak
-> on a local single-node RKE2 cluster, provisioned with Terraform/Pulumi + Vagrant and
-> reconciled end-to-end with ArgoCD. CloudNativePG-backed Postgres with continuous
-> backup to MinIO. Vault-managed secrets via External Secrets Operator. TLS
-> via cert-manager. Pod Security restricted + NetworkPolicy-based hardening.
+> Reproducible deployment of Keycloak on a local single-node RKE2 cluster.
+> **Terraform (or Pulumi + Go) provisions the infrastructure** — Vagrant VM + RKE2
+> single-node cluster — and **bootstraps ArgoCD as the GitOps controller**.
+> ArgoCD then reconciles every other component from this repo: cert-manager,
+> MetalLB, Traefik, Vault (Raft) + External Secrets Operator, MinIO,
+> CloudNativePG-managed Postgres, Keycloak operator + Keycloak CR, NetworkPolicies,
+> and the daily Vault Raft snapshot CronJob. TLS via cert-manager. Pod Security
+> Standards `restricted` + default-deny NetworkPolicies for hardening.
 
 ## Assignment summary
 
@@ -19,7 +22,7 @@ This repository is my submission for DevOps assessment. The brief was: **deploy 
 | HTTPS access | cert-manager + `lab-ca-issuer` + Traefik TLS at `https://keycloak.lab.test` |
 | Basic network hardening | Restricted PSS on the keycloak namespace + default-deny NetworkPolicies in every workload namespace + per-app allow-listed pinholes |
 
-**Beyond the brief:** Vault + ESO (no plaintext secrets in Git), CNPG operator (HA primary + replica + WAL backups to MinIO), Vault Raft snapshot CronJob (Phase 11), ArgoCD app-of-apps with sync waves + retry config, six design docs covering architecture, decisions, production gaps, HA pattern, backup/recovery, and Pulumi mirror.
+**Beyond the brief:** Vault + ESO (no plaintext secrets in Git), CNPG operator (HA primary + replica + WAL backups to MinIO), Vault Raft snapshot CronJob, ArgoCD app-of-apps with sync waves + retry config, six design docs covering architecture, decisions, production gaps, HA pattern, backup/recovery, and Pulumi mirror.
 
 ## Assumptions and constraints
 
@@ -317,7 +320,7 @@ Key items:
 │   ├── providers.tf                     helm + kubernetes providers (kubectl-via-local-exec to avoid kubectl provider init-time bug)
 │   ├── variables.tf                     VM sizing, RKE2 version, ArgoCD chart version
 │   └── outputs.tf
-├── pulumi/                              Path B — Pulumi+Go mirror (stretch S2, validated end-to-end)
+├── pulumi/                              Path B — Pulumi+Go mirror (validated end-to-end)
 │   ├── go.mod                           module: github.com/asafwat/iac-rke2-keycloak/pulumi
 │   ├── Pulumi.yaml                      project: runtime go, local state backend
 │   ├── Pulumi.dev.yaml                  stack config — mirrors terraform/variables.tf defaults
@@ -356,7 +359,7 @@ Key items:
 │   ├── argocd/                          ArgoCD ingress + TLS
 │   ├── root/                            root-app target manifest (not used; root-app reads argocd/apps via app-of-apps)
 │   ├── networkpolicies/policies.yaml    default-deny + allow-listed for un-wrappered namespaces
-│   └── vault-backup/                    Phase 11 — Vault Raft snapshot CronJob (SA, ESO, NetPol, CronJob)
+│   └── vault-backup/                    Vault Raft snapshot CronJob (SA, ESO, NetPol, CronJob)
 ├── scripts/
 │   ├── ps/
 │   │   ├── bootstrap.ps1                Path A — Terraform bootstrap wrapper (Windows)
@@ -367,10 +370,16 @@ Key items:
 │       ├── bootstrap-pulumi.sh          Path B — Pulumi bootstrap wrapper (Linux/macOS)
 │       └── init-vault.sh                init + unseal + seed + ESO + vault-snapshot roles (Linux/macOS, shared by both paths)
 └── docs/
-    ├── decisions.md                     non-obvious design choices with rationale (gitignored — local notes)
-    ├── backup-recovery.md               backup architecture + restore drill
-    ├── pulumi-mirror.md                 Pulumi+Go mirror design + validation log
-    └── production-gaps.md             "what I would change for production"
+    ├── architecture.md                  component map, trust boundaries, data flows, sync wave ordering
+    ├── design-choices.md                full Decision + Why + Production answer for each architectural choice
+    ├── install.md                       per-OS install commands (Windows winget / Ubuntu apt / macOS Homebrew + Hyper-V toggle)
+    ├── teardown.md                      orderly + nuclear destroy recipes, orphan-VirtualBox-directory fix, IaC-path-switchover
+    ├── backup-recovery.md               CNPG WAL + Vault Raft snapshot pipelines, verify recipes, restore drill
+    ├── pulumi-mirror.md                 Pulumi+Go mirror design + provider-equivalence table + validation log
+    ├── ha-pattern.md                    production HA pivot — Terraform/Pulumi + cloud-init + Ansible, control-plane isolation
+    ├── autoscaling-on-prem.md           on-prem autoscaling — Cluster API + cluster-autoscaler per substrate (vSphere/Harvester/Metal³)
+    ├── production-gaps.md               "what I would change for production" — every PoC trade-off named explicitly
+    └── decisions.md                     non-obvious design choices with rationale (gitignored — local notes)
 ```
 
 ---

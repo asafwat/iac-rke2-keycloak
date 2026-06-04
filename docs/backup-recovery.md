@@ -150,7 +150,7 @@ CNPG will:
 After verification, you can cut Keycloak over by re-pointing the
 `Keycloak.spec.db.host` from `keycloak-db-rw` to `keycloak-db-restored-rw`.
 
-**Restore drill** (Stretch S3 in the build plan): automate the above as a
+**Restore drill**: automate the above as a
 weekly CronJob, validate row counts + a synthetic query against the
 restored instance, then delete the ephemeral Cluster CR. An untested
 backup is a hope, not a backup.
@@ -304,4 +304,4 @@ archive for compliance retention.
 | Vault sealed (pod restart) | Re-run `init-vault.{ps1,sh}` — detects already-initialized, unseals only | `terraform/vault-keys.json` |
 | Vault data lost (PVC gone) | Restore Raft snapshot procedure above | `vault.snap` from MinIO + `vault-keys.json` |
 | Entire VM destroyed | Rebuild via `bootstrap.ps1`, restore Postgres + Vault from MinIO | MinIO data preserved AND keys |
-| **MinIO PVC corrupted/lost** | **Backups gone. No recovery in the lab.** | — (production: secondary region MinIO) |
+| **MinIO PVC corrupted/lost** | **Backups gone. No recovery in the lab.** | Production: secondary region MinIO |

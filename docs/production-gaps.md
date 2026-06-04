@@ -1,4 +1,4 @@
-# Production GitOps — what I would change
+# Production Gaps — what I would change
 
 This document captures the gap between what this lab ships and the
 production-grade deployment. Each section names the
@@ -438,8 +438,7 @@ This lab backs up to a **local MinIO** running in the same cluster. for Producti
 - **Encryption at rest** with KMS-backed keys.
 - **Scheduled restore drill** - a CronJob that restores the latest backup to
   an ephemeral namespace, runs validation queries, then deletes itself. An
-  untested backup is a hope, not a backup. This is **Stretch S3** in the
-  build plan.
+  untested backup is a hope, not a backup.
 
 ---
 
@@ -451,9 +450,25 @@ This lab backs up to a **local MinIO** running in the same cluster. for Producti
   matching the org's KMS-rooted key.
 - **Vulnerability scanning at admission** with Trivy-operator or Neuvector,
   failing pulls of images above a configurable CVE severity threshold.
-- **Cluster autoscaler** (or Karpenter on AWS) for node-level elasticity.
-  Out of scope for a fixed-size on-prem cluster, but relevant on
-  AWS/GCP/Azure-backed deployments.
+- **Node-level autoscaling.** Out of scope for this single-VM PoC (one
+  host, no point), but absolutely a thing in production — on both cloud
+  and on-prem. The mechanism differs:
+    - **AWS**: Karpenter (fast EC2 provisioning, spot integration,
+      bin-packing optimization)
+    - **On-prem (vSphere / Harvester / Proxmox / Metal³ / bare metal)**:
+      **Cluster API (CAPI) + cluster-autoscaler** with a provider matching
+      the substrate (CAPV, CAPH, CAPMOX, Metal³, etc.). cluster-autoscaler
+      drives `MachineDeployment` replica counts; the CAPI provider
+      creates/destroys VMs via the substrate's API. Slower than Karpenter
+      (3-5 min per vSphere VM vs. ~30s for EC2), but the same outcome.
+      RKE2 clusters registered with Rancher use this pattern via
+      Rancher's Provisioning v2.
+    - **Pod-level autoscaling (HPA + KEDA + VPA)** is identical on either
+      side and does most of the work in practice.
+
+  See [autoscaling-on-prem.md](autoscaling-on-prem.md) for the full
+  breakdown — providers per substrate, CAPI resource shapes, and why
+  Karpenter is still AWS-first in 2026.
 - **Cost observability** — OpenCost + Grafana dashboards. Tracks
   per-namespace + per-workload cost (CPU/memory/storage) against the
   cluster's nominal cost.
@@ -511,7 +526,7 @@ produced the backups is also the cluster that holds them. Production:
   - **CNPG `barmanObjectStore`** — base + WAL backups (unchanged from
     the lab; only the endpoint URL flips from in-cluster to external).
 - **Encryption at rest** with KMS-backed keys.
-- **Scheduled restore drill** (Stretch S3 in the build plan) — a
+- **Scheduled restore drill** — a
   CronJob that restores the latest backup to an ephemeral namespace,
   runs validation queries, and deletes itself. An untested backup is
   a hope, not a backup.
@@ -556,8 +571,7 @@ DB-aware backup.
 
 ## Logs — Grafana Alloy replaces Promtail
 
-The lab uses Promtail because it's the canonical pairing with Loki and the
-mlops-lab-platform reference uses it. **Grafana Labs deprecated Promtail in
+The lab uses Promtail because it's the canonical pairing with Loki. **Grafana Labs deprecated Promtail in
 favour of Grafana Alloy in 2026** (Alloy unifies log collection, metric
 scraping, and trace collection in one agent based on the OpenTelemetry
 Collector).
@@ -720,7 +734,7 @@ and Grafana. Production deployment would wire each behind Keycloak OIDC:
 
 - **ArgoCD**: native OIDC config (`dex.config` block in the Helm values)
   or direct OIDC via `oidc.config`. Group claim mapping to RBAC roles.
-- **Grafana**: `auth.generic_oauth` block (see the mlops-lab-platform
+- **Grafana**: `auth.generic_oauth` block ( 
   `kube-prometheus-stack` wrapper for a complete reference, including
   split-horizon URLs for browser vs in-cluster traffic).
 - **MinIO Console**: OIDC via the `MINIO_IDENTITY_OPENID_*` env vars OR
