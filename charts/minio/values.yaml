@@ -21,16 +21,6 @@ externalSecrets:
 minio:
   mode: standalone
   replicaCount: 1
-
-  # ── Image registry override ────────────────────────────────────────────────
-  # Bitnami moved free-tier images from docker.io/bitnami/* to
-  # docker.io/bitnamilegacy/* in mid-2025. The chart still defaults to
-  # bitnami/* (404s on pull), so override every image the chart references.
-  #
-  # The chart reuses `defaultInitContainers.volumePermissions.image` not just
-  # for the (disabled-by-default) chown init container but also for the
-  # `wait-for-available-minio` init container in the provisioning Job - so
-  # that image must be overridden even though we don't enable volumePermissions.
   image:
     repository: bitnamilegacy/minio
   clientImage:
@@ -39,7 +29,6 @@ minio:
     image:
       repository: bitnamilegacy/minio-object-browser
     # Console UI ingress: https://minio.lab.test
-    # Path is `console.ingress` in chart 17.x (was top-level consoleIngress in older charts).
     ingress:
       enabled: true
       ingressClassName: traefik
@@ -121,6 +110,9 @@ minio:
       - minio-cnpg-backup-creds
       - minio-vault-snapshot-creds
 
+    # Provisioning Job runs mc admin policy create + mc admin user add +
+    # mc admin policy attach sequentially. RSS spike during mc calls under
+    # load can hit ~200 MiB; 128 MiB was too tight and got OOMKilled mid-run.
     resources:
-      requests: { cpu: 50m, memory: 64Mi }
-      limits:   { cpu: 200m, memory: 128Mi }
+      requests: { cpu: 50m, memory: 128Mi }
+      limits:   { cpu: 200m, memory: 384Mi }

@@ -12,7 +12,7 @@
 # MetalLB's ARP responses for .20 don't conflict with the node's own .10 ARP.
 # The host machine reaches .20 via VirtualBox's host-only network.
 #
-# Production note (see docs/production-gitops.md):
+# Production note (see docs/production-gaps.md):
 #   For BGP-capable upstream routers, switch L2Advertisement → BGPAdvertisement
 #   + BGPPeer. Gives true multi-node ECMP load distribution instead of L2's
 #   single-node-owns-each-IP model.

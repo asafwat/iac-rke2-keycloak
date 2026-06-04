@@ -1,0 +1,25 @@
+name: iac-rke2-keycloak
+runtime: go
+description: |
+  Pulumi+Go mirror of the Terraform IaC layer. Same outcome as
+  `terraform apply` from the sibling terraform/ directory:
+  Vagrant VM + RKE2 + ArgoCD + root-app. Every other component
+  (cert-manager, MetalLB, Traefik, Vault, ESO, CNPG, MinIO,
+  Keycloak, NetworkPolicies) is reconciled by ArgoCD from the
+  argocd/ and charts/ + manifests/ trees.
+
+  See docs/pulumi-mirror.md for the design rationale.
+
+# Local state backend. Reviewers don't need a Pulumi cloud account;
+# state lives under ~/.pulumi (or set --cloud-url file://./state).
+# Matches the assessment's no-external-services posture.
+backend:
+  url: file://~
+
+# Stack passphrase: set PULUMI_CONFIG_PASSPHRASE in the environment
+# before `pulumi up` (any non-empty string is fine for the lab).
+#
+# Default providers are LEFT ENABLED. We use an explicit Kubernetes
+# provider in pkg/argocd (needed to pin it at the Vagrant-written
+# kubeconfig path), and the default provider for `command.local` (which
+# takes no config, so an explicit provider would be empty boilerplate).

@@ -35,10 +35,6 @@ spec:
         duration: 30s
         factor: 2
         maxDuration: 5m
-  # ESO's admission webhook adds default fields (conversionStrategy, decodingStrategy,
-  # metadataPolicy, nullBytePolicy) to ExternalSecret CRs after creation. These
-  # aren't in our Git manifest, so ArgoCD sees them as drift forever. Ignore the
-  # webhook-defaulted fields so the Application can reach Healthy/Synced.
   ignoreDifferences:
     - group: external-secrets.io
       kind: ExternalSecret

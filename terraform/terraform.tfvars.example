@@ -1,0 +1,8 @@
+# Copy this file to `terraform.tfvars` and edit if you need to override defaults.
+# Defaults work on an 8 GB+ host with ~12 GB free disk.
+
+# vm_box       = "opensuse/Leap-15.6.x86_64"   # fallback: "ubuntu/jammy64"
+# vm_memory_mb = 8192                           # constrained host: 6144 (and run CNPG with 1 instance)
+# vm_cpus      = 4
+# vm_ip        = "192.168.56.10"                # must sit in VirtualBox's host-only allowed range
+# vm_hostname  = "rke2-server-1"

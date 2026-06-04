@@ -1,0 +1,14 @@
+# Pulumi stack config — values mirror terraform/variables.tf defaults.
+# `encryptionsalt` is intentionally NOT committed: the lab passphrase is
+# documented in the README, so committing the salt alongside it would make
+# any Pulumi-encrypted secret in this stack effectively plaintext.
+# `pulumi up` regenerates the salt locally on first run; not needed in Git.
+config:
+  iac-rke2-keycloak:vm_box: opensuse/Leap-15.6.x86_64
+  iac-rke2-keycloak:vm_memory_mb: "12288"
+  iac-rke2-keycloak:vm_cpus: "8"
+  iac-rke2-keycloak:vm_ip: 192.168.56.10
+  iac-rke2-keycloak:vm_hostname: rke2-server-1
+  iac-rke2-keycloak:rke2_version: v1.35.5+rke2r2
+  iac-rke2-keycloak:argocd_chart_version: 9.5.17
+encryptionsalt: v1:Dn+9Ni7KjiA=:v1:4LseDSbeqMYSkk3p:qqF00n2WyzvZMQOBc2ZiIIJEiOz4Bw==

@@ -9,8 +9,6 @@ metadata:
 spec:
   project: default
   source:
-    # Repo URL is hardcoded to the public assessment repo. Reviewer's
-    # `terraform apply` will read manifests directly from this URL.
     repoURL: https://github.com/asafwat/iac-rke2-keycloak.git
     targetRevision: main
     path: argocd/apps

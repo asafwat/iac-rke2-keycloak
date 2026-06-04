@@ -38,7 +38,10 @@ spec:
         - { protocol: UDP, port: 53 }
         - { protocol: TCP, port: 53 }
 ---
-# Allow Traefik to reach MinIO server (S3 API on 9000) and Console (9001).
+# Allow Traefik to reach MinIO server (9000) and Console.
+# Bitnami chart 17.x quirk: Console Service port 9001 maps to container port 9090.
+# NetworkPolicy enforces on the actual pod port (9090) - allowing only 9001
+# would cause Gateway Timeout because the connection arrives at 9090.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -57,7 +60,8 @@ spec:
               kubernetes.io/metadata.name: traefik
       ports:
         - { protocol: TCP, port: 9000 }
-        - { protocol: TCP, port: 9001 }
+        - { protocol: TCP, port: 9001 }     # Service port (in case of direct hit)
+        - { protocol: TCP, port: 9090 }     # Console container port (the real one)
 ---
 # Allow CNPG Postgres pods (any cluster in any namespace) to reach MinIO:9000
 # for barmanObjectStore base + WAL backups.

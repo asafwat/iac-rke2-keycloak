@@ -8,7 +8,7 @@
 #
 # Production note: local-path is single-node, host-directory-backed, no replication or
 # snapshots. Production replacement is Longhorn / vSphere CSI / Rook+Ceph / cloud CSI.
-# Documented in docs/production-gitops.md.
+# Documented in docs/production-gaps.md.
 
 apiVersion: v1
 kind: Namespace
