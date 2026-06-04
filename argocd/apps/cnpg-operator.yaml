@@ -25,9 +25,15 @@ spec:
         # If the second pod sits Pending due to hard anti-affinity, revert to
         # replicaCount: 1 (same workaround as ArgoCD HA in Phase 3).
         replicaCount: 2
+        # Bumped from 200m/256Mi → 1000m/512Mi: the operator startup work
+        # (load CRDs, replay Cluster CR state, start the validating-webhook
+        # server on :9443) was missing the startup/liveness probe timeouts
+        # under VirtualBox CPU pressure, causing crashloops. Higher CPU limit
+        # lets it burst through startup; memory limit doubled as OOM safety.
+        # Production with proper CPU headroom can revert these.
         resources:
           requests: { cpu: 50m, memory: 64Mi }
-          limits:   { cpu: 200m, memory: 256Mi }
+          limits:   { cpu: 1000m, memory: 512Mi }
         monitoring:
           podMonitorEnabled: false   # TODO: flip when Prom/Grafana stack lands
   destination:
