@@ -78,7 +78,24 @@ export PULUMI_CONFIG_PASSPHRASE='lab-passphrase-change-me'
 
 ### What either script does
 
-Validates tools on PATH → IaC apply (`terraform apply` for Path A; `pulumi login --local && pulumi up --stack dev` for Path B) → waits for Vault pod → runs `init-vault.{ps1,sh}` to initialize + unseal Vault + seed secrets + create ESO and `vault-snapshot` roles → waits for every Argo Application to reach `Healthy`. End-to-end time on first run: **~25–30 min** (image pulls dominate). Re-runs are idempotent.
+The bootstrap wrapper drives five phases. Each phase shells out to the next tool in the chain — no magic, no hidden state.
+
+1. **Pre-flight** — check `vagrant`, `terraform` (Path A) or `pulumi` + `go` (Path B), `kubectl`, `helm` are on PATH; fail fast if any are missing.
+2. **IaC apply** — the only step that differs between paths:
+   - **Path A**: `terraform init && terraform apply -auto-approve` runs the Terraform plan in `terraform/`, which:
+     - Triggers `vagrant up` → VirtualBox builds the openSUSE Leap 15.6 VM and runs the inline shell provisioner that installs RKE2
+     - VM writes `kubeconfig` to the repo root with the server URL rewritten to the VM IP
+     - Terraform `helm_release` installs the ArgoCD chart into the `argocd` namespace, waiting until Healthy
+     - Terraform `null_resource` shells `kubectl apply -f argocd/root-app.yaml`, registering the root Application
+     - ArgoCD's root Application uses the app-of-apps pattern to discover every `argocd/apps/*.yaml` and start syncing them in wave order (-4 → 5)
+   - **Path B**: `pulumi login --local && pulumi up --yes --stack dev` does the **same five sub-steps** via `pulumi/main.go`. Same VM, same kubeconfig, same Helm release, same kubectl apply — different IaC tool driving them.
+3. **Wait for Vault** — poll the `vault-0` pod until phase = `Running` (sealed but listening on `:8200`, ready for init). Times out at 20 min.
+4. **Run `init-vault.{ps1,sh}`** — port-forwards to vault-0 and runs the imperative bootstrap: `vault operator init` → `unseal` → enable KV v2 + Kubernetes auth method → write `eso-secret-reader` + `vault-snapshot-policy` policies → bind ServiceAccounts via Kubernetes auth roles → seed initial KV paths (`secret/minio/admin`, `secret/keycloak/admin`, etc.). Unseal keys + root token persist to `terraform/vault-keys.json` (gitignored). Script is idempotent.
+5. **ESO cascade + final wait** — ExternalSecrets resolve, K8s Secrets materialize across all namespaces, pods that were Pending on missing secrets un-pend and reach Ready. With `-WaitForHealthy` / `--wait-for-healthy`, the script polls ArgoCD Applications until every one reports `Healthy` (up to 25 min).
+
+End-to-end time on first run: **~25–30 min** (image pulls dominate). Re-runs are idempotent — Terraform/Pulumi skip what already exists, `init-vault` detects existing state and skips it, ArgoCD self-heals into the desired state.
+
+> The full data-flow diagram (including the ESO secret resolution chain, the operator wait-for-CRD races resolved by `retry.limit: 20`, and the sync wave dependencies) is in [docs/architecture.md](docs/architecture.md#bootstrap-cold-start).
 
 > **Keycloak takes longer than the rest.** On a resource-constrained PoC VM, the Keycloak pod is the last workload to materialize and can take **5–10 minutes after the script reports "All Applications Healthy"** before it's actually serving traffic. The script's healthy-check looks at ArgoCD's `Application.status.health` — which the `Keycloak` CR can briefly report as `Healthy` while the operator is still building the StatefulSet, pulling the ~500 MB Keycloak image, running the Quarkus build phase, and applying ~80 schema migrations to Postgres on first start. If `https://keycloak.lab.test` returns 502/504 right after bootstrap, that's normal — watch `kubectl -n keycloak get pods -w` until `keycloak-0` is `Running 1/1`, then try the URL again. Production with more vCPU avoids this entirely.
 
